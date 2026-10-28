@@ -1,0 +1,164 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { Game } from '../server/game.js';
+import { emptyBuild, PRESETS, WORLD } from '../shared/stats.js';
+
+const DT = 1 / 60;
+const run = (g, seconds) => { for (let i = 0; i < Math.round(seconds / DT); i++) g.step(DT); };
+const drain = (g) => { const e = g.events; g.events = []; return e; };
+
+function duel() {
+  const g = new Game({ matchSeconds: 60, respawnSeconds: 1, spawnProtectionSeconds: 0, asteroidTarget: 0, maxItems: 0 });
+  g.asteroids = [];
+  const a = g.addPlayer({ id: 'a', name: 'A', color: '#fff', build: { ...emptyBuild(), laserDamage: 50 } }).player;
+  const b = g.addPlayer({ id: 'b', name: 'B', color: '#000', build: emptyBuild() }).player;
+  g.step(DT); // spawns both
+  // Place B directly in front of A, inside laser range.
+  a.x = 1000; a.y = 1000; a.angle = 0; a.vx = a.vy = 0;
+  b.x = 1150; b.y = 1000; b.vx = b.vy = 0;
+  return { g, a, b };
+}
+
+test('rejects invalid builds when a player joins', () => {
+  const g = new Game();
+  const r = g.addPlayer({ id: 'x', name: 'X', color: '#fff', build: { ...emptyBuild(), maxHp: 60 } });
+  assert.equal(r.ok, false);
+  assert.equal(g.players.size, 0);
+});
+
+test('lasers damage and kill, awarding a point and a respawn', () => {
+  const { g, a, b } = duel();
+  a.input.fire = true;
+  const startHp = b.hp;
+  run(g, 0.5);
+  assert.ok(b.hp < startHp, 'B should have taken damage');
+  run(g, 4);
+  const events = drain(g);
+  const kill = events.find((e) => e.type === 'kill');
+  assert.ok(kill, 'a kill event should have been emitted');
+  assert.equal(kill.killer.id, 'a');
+  assert.equal(kill.victim.id, 'b');
+  assert.ok(a.score >= 1);
+  assert.ok(b.deaths >= 1);
+  // B respawns after the delay
+  a.input.fire = false;
+  run(g, 1.5);
+  assert.equal(b.alive, true);
+  assert.equal(b.hp, b.stats.maxHp);
+});
+
+test('shields reduce damage taken', () => {
+  const g = new Game({ asteroidTarget: 0, maxItems: 0, spawnProtectionSeconds: 0 });
+  g.asteroids = [];
+  const tank = g.addPlayer({ id: 't', name: 'T', color: '#fff', build: { ...emptyBuild(), shields: 50 } }).player;
+  const soft = g.addPlayer({ id: 's', name: 'S', color: '#fff', build: emptyBuild() }).player;
+  g.step(DT);
+  g.applyDamage(tank, 20, null, 'laser');
+  g.applyDamage(soft, 20, null, 'laser');
+  assert.equal(soft.stats.maxHp - soft.hp, 20);
+  assert.equal(tank.stats.maxHp - tank.hp, 10);
+});
+
+test('spawn protection blocks damage', () => {
+  const g = new Game({ asteroidTarget: 0, maxItems: 0, spawnProtectionSeconds: 2 });
+  const p = g.addPlayer({ id: 'p', name: 'P', color: '#fff', build: emptyBuild() }).player;
+  g.step(DT);
+  g.applyDamage(p, 50, null, 'laser');
+  assert.equal(p.hp, p.stats.maxHp);
+  run(g, 2.1);
+  g.applyDamage(p, 50, null, 'laser');
+  assert.ok(p.hp < p.stats.maxHp);
+});
+
+test('cloaked ships are hidden from other players but visible to themselves', () => {
+  const g = new Game({ asteroidTarget: 0, maxItems: 0 });
+  const ghost = g.addPlayer({ id: 'g', name: 'G', color: '#fff', build: { ...emptyBuild(), cloak: 50 } }).player;
+  g.addPlayer({ id: 'o', name: 'O', color: '#fff', build: emptyBuild() });
+  g.step(DT);
+  g.setInput('g', { cloak: true });
+  g.step(DT);
+  assert.ok(ghost.cloakedUntil > g.time);
+  const seenByOther = g.snapshotFor('o', []).ships.map((s) => s.id);
+  const seenBySelf = g.snapshotFor('g', []).ships.map((s) => s.id);
+  assert.ok(!seenByOther.includes('g'));
+  assert.ok(seenBySelf.includes('g'));
+  // Firing breaks the cloak
+  g.setInput('g', { cloak: false, fire: true });
+  g.step(DT);
+  assert.ok(ghost.cloakedUntil <= g.time);
+  assert.ok(g.snapshotFor('o', []).ships.some((s) => s.id === 'g'));
+});
+
+test('picking up an item boosts a stat until death', () => {
+  const g = new Game({ asteroidTarget: 0, maxItems: 0, respawnSeconds: 0.1 });
+  g.asteroids = [];
+  const p = g.addPlayer({ id: 'p', name: 'P', color: '#fff', build: emptyBuild() }).player;
+  g.step(DT);
+  const before = p.stats.laserDamage;
+  g.items.push({ id: 999, type: 'laser', x: p.x, y: p.y, expiresAt: g.time + 10 });
+  g.step(DT);
+  assert.equal(g.items.length, 0, 'item should be consumed');
+  assert.ok(p.stats.laserDamage > before);
+  assert.deepEqual(p.pickups, ['laser']);
+  g.kill(p, null, 'asteroid');
+  assert.equal(p.stats.laserDamage, before, 'boost should reset on death');
+  assert.deepEqual(p.pickups, []);
+});
+
+test('items spawn occasionally and expire', () => {
+  const g = new Game({ asteroidTarget: 0, itemSpawnMin: 1, itemSpawnMax: 1, itemLifetime: 2, maxItems: 3 });
+  run(g, 1.2);
+  assert.ok(g.items.length >= 1);
+  run(g, 10);
+  assert.ok(g.items.length <= 3);
+});
+
+test('match ends after the fixed duration, then a new one starts with reset scores', () => {
+  const g = new Game({ matchSeconds: 5, intermissionSeconds: 2, asteroidTarget: 0 });
+  const p = g.addPlayer({ id: 'p', name: 'P', color: '#fff', build: emptyBuild() }).player;
+  p.score = 7;
+  run(g, 5.1);
+  assert.equal(g.match.state, 'ended');
+  assert.equal(g.match.results[0].score, 7);
+  assert.ok(drain(g).some((e) => e.type === 'matchEnd'));
+  run(g, 2.1);
+  assert.equal(g.match.state, 'playing');
+  assert.equal(g.match.number, 2);
+  assert.equal(p.score, 0);
+  assert.ok(drain(g).some((e) => e.type === 'matchStart'));
+});
+
+test('bots can be added and removed and actually fight', () => {
+  const g = new Game({ matchSeconds: 600 });
+  assert.equal(g.setBotCount(6), 6);
+  assert.equal(g.botCount(), 6);
+  run(g, 90);
+  const kills = drain(g).filter((e) => e.type === 'kill');
+  assert.ok(kills.length > 0, 'bots should score kills within 90 simulated seconds');
+  assert.equal(g.setBotCount(2), 2);
+  assert.equal(g.botCount(), 2);
+  assert.equal(g.setBotCount(-5), 0);
+  assert.equal(g.botCount(), 0);
+});
+
+test('world wraps toroidally', () => {
+  const g = new Game({ asteroidTarget: 0, maxItems: 0 });
+  const p = g.addPlayer({ id: 'p', name: 'P', color: '#fff', build: PRESETS.Scout }).player;
+  g.step(DT);
+  p.x = WORLD.width - 1; p.y = 5; p.angle = 0; p.vx = 600; p.vy = -600;
+  g.step(DT);
+  assert.ok(p.x >= 0 && p.x < WORLD.width);
+  assert.ok(p.y >= 0 && p.y < WORLD.height);
+});
+
+test('long simulation with many bots stays healthy', () => {
+  const g = new Game({ matchSeconds: 120, intermissionSeconds: 3 });
+  g.setBotCount(12);
+  run(g, 300);
+  for (const p of g.players.values()) {
+    assert.ok(Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.hp));
+  }
+  assert.ok(g.match.number >= 3);
+  const snap = JSON.stringify(g.snapshotFor('bot0', []));
+  assert.ok(snap.length < 20000, `snapshot too large: ${snap.length}`);
+});

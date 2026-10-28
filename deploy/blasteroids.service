@@ -1,0 +1,25 @@
+[Unit]
+Description=Blasteroids multiplayer game server
+After=network.target
+
+[Service]
+Type=simple
+User=blasteroids
+Group=blasteroids
+WorkingDirectory=/opt/blasteroids
+ExecStart=/usr/bin/node server/index.js
+Restart=on-failure
+RestartSec=3
+Environment=NODE_ENV=production
+Environment=PORT=8080
+Environment=MATCH_SECONDS=300
+Environment=BOTS=3
+Environment=CREDITS=100
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
