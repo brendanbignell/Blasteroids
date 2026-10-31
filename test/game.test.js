@@ -258,3 +258,22 @@ test('ship themes: humans pick from the list, bots always fly drones', () => {
   assert.equal(themes.c, 'arrowhead');
   assert.equal(themes.bot0, 'drone');
 });
+
+test('pressing cloak again drops it early; holding the key does not', () => {
+  const g = new Game({ asteroidTarget: 0, maxItems: 0 });
+  const ghost = g.addPlayer({ id: 'g', name: 'G', color: '#fff', build: { ...emptyBuild(), cloak: 50 } }).player;
+  g.step(DT);
+  g.setInput('g', { cloak: true });
+  run(g, 1); // keep holding: stays cloaked
+  assert.ok(ghost.cloakedUntil > g.time);
+  g.setInput('g', { cloak: false });
+  run(g, 0.5);
+  assert.ok(ghost.cloakedUntil > g.time, 'releasing the key does nothing');
+  g.setInput('g', { cloak: true, fire: true });
+  g.step(DT);
+  assert.ok(ghost.cloakedUntil <= g.time, 'a fresh press drops the cloak');
+  assert.equal(g.lasers.length, 1, 'weapons are available again immediately');
+  assert.ok(Math.abs(ghost.cloakReadyAt - (g.time + ghost.stats.cloakCooldown)) < 1e-9, 'cooldown counts from the drop');
+  run(g, 2); // still holding: must not re-cloak or toggle
+  assert.ok(ghost.cloakedUntil <= g.time);
+});

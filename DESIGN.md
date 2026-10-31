@@ -66,7 +66,8 @@ never affects gameplay. The server validates the choice and reserves the drone h
   flashing MISSILE LOCK warning.
 * **Cloak** makes a ship disappear from everyone else's snapshots entirely (not just
   transparent on the client, so no "see cloaked ships" hack is possible). Weapons are locked
-  while cloaked, so cloak is for escaping or repositioning, not ambushing. Bots and torpedo
+  while cloaked, so cloak is for escaping or repositioning, not ambushing. Pressing `C` again
+  drops the cloak early, and the cooldown runs from when the cloak actually ends. Bots and torpedo
   seekers cannot target cloaked ships.
 * **Asteroids** drift through the arena, block shots, split large → medium → small when
   destroyed, and damage ships on collision proportional to impact speed. They make the arena

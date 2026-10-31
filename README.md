@@ -34,7 +34,7 @@ npm test
 | `A` `D` / `←` `→` | Turn |
 | `Space` | Fire laser |
 | `X`, `Enter` or `Shift` | Fire torpedo |
-| `C` | Cloak |
+| `C` | Cloak (press again to drop it early) |
 | `Tab` (hold) | Full scoreboard |
 | `Esc` | Back to the hangar to re-customise |
 

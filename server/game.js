@@ -63,7 +63,7 @@ export class Game {
       hp: 0, alive: false,
       respawnAt: this.time + 0.01,
       invulnUntil: 0,
-      cloakedUntil: 0, cloakReadyAt: 0,
+      cloakedUntil: 0, cloakReadyAt: 0, cloakHeld: false,
       laserReadyAt: 0, torpedoReadyAt: 0,
       lastCollisionAt: 0,
       input: { thrust: false, reverse: false, left: false, right: false, fire: false, torpedo: false, cloak: false },
@@ -288,8 +288,12 @@ export class Game {
       p.hp = Math.min(st.maxHp, p.hp + st.hpRegen * dt);
     }
 
-    // Cloak
-    if (inp.cloak && st.cloakDuration > 0 && this.time >= p.cloakReadyAt && p.cloakedUntil <= this.time) {
+    // Cloak: a fresh press of the key cloaks when ready, or drops an active cloak early.
+    const cloakPressed = inp.cloak && !p.cloakHeld;
+    p.cloakHeld = inp.cloak;
+    if (cloakPressed && p.cloakedUntil > this.time) {
+      this.decloak(p);
+    } else if (inp.cloak && st.cloakDuration > 0 && this.time >= p.cloakReadyAt && p.cloakedUntil <= this.time) {
       p.cloakedUntil = this.time + st.cloakDuration;
       p.cloakReadyAt = p.cloakedUntil + st.cloakCooldown;
       this.events.push({ type: 'cloak', id: p.id, on: true });
@@ -310,6 +314,7 @@ export class Game {
   decloak(p) {
     if (p.cloakedUntil > this.time) {
       p.cloakedUntil = this.time;
+      p.cloakReadyAt = this.time + p.stats.cloakCooldown; // cooldown runs from when it ends
       this.events.push({ type: 'cloak', id: p.id, on: false });
     }
   }
