@@ -47,11 +47,12 @@ All settings are environment variables read by `server/index.js`.
 | `PORT` | `8080` | HTTP/WebSocket port |
 | `HOST` | `0.0.0.0` | Bind address |
 | `MATCH_SECONDS` | `300` | Length of each match |
-| `INTERMISSION_SECONDS` | `15` | Results screen between matches |
+| `INTERMISSION_SECONDS` | `3` | Results screen between matches |
 | `CREDITS` | `100` | Customisation credits per player |
 | `BOTS` | `3` | Bots present at start-up |
 | `MAX_BOTS` | `12` | Upper limit players can raise the bot count to |
-| `ALLOW_BOT_CONTROL` | `true` | Set to `false` to stop players changing the bot count |
+| `BOT_SKILL` | `pilot` | Starting bot skill: `rookie`, `pilot`, `veteran` or `ace` |
+| `ALLOW_BOT_CONTROL` | `true` | Set to `false` to stop players changing the bot count and skill |
 | `MAX_PLAYERS` | `32` | Maximum simultaneous human players |
 | `TICK_HZ` | `60` | Simulation rate |
 | `SNAPSHOT_HZ` | `20` | State broadcast rate |

@@ -1,6 +1,6 @@
 // Ship customisation screen.
 
-import { ABILITIES, ABILITY_KEYS, MAX_POINTS, PRESETS, buildCost, deriveStats, describeStat, emptyBuild, SHIP_COLORS } from '/shared/stats.js';
+import { ABILITIES, ABILITY_KEYS, MAX_POINTS, PRESETS, buildCost, deriveStats, describeStat, emptyBuild, SHIP_COLORS, SHIP_THEMES, SHIP_THEME_KEYS, BOT_SKILLS } from '/shared/stats.js';
 import { drawShip } from './shipart.js';
 
 const STORAGE_KEY = 'blasteroids.pilot';
@@ -12,6 +12,8 @@ export class Lobby {
     this.credits = 100;
     this.build = emptyBuild();
     this.color = SHIP_COLORS[0];
+    this.theme = SHIP_THEME_KEYS[0];
+    this.botSkill = null;
     this.serverBots = 0;
     this.maxBots = 12;
     this.allowBotControl = true;
@@ -19,6 +21,8 @@ export class Lobby {
       root: document.getElementById('lobby'),
       name: document.getElementById('name'),
       colors: document.getElementById('colors'),
+      themes: document.getElementById('themes'),
+      botSkills: document.getElementById('bot-skills'),
       preview: document.getElementById('ship-preview'),
       abilities: document.getElementById('abilities'),
       presets: document.getElementById('presets'),
@@ -46,6 +50,7 @@ export class Lobby {
       if (saved) {
         this.el.name.value = saved.name || '';
         if (SHIP_COLORS.includes(saved.color)) this.color = saved.color;
+        if (SHIP_THEME_KEYS.includes(saved.theme)) this.theme = saved.theme;
         if (saved.build) for (const k of ABILITY_KEYS) this.build[k] = Math.max(0, Math.min(MAX_POINTS, saved.build[k] | 0));
       } else {
         Object.assign(this.build, PRESETS.Balanced);
@@ -54,7 +59,7 @@ export class Lobby {
   }
 
   persist() {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ name: this.el.name.value, color: this.color, build: this.build })); } catch { /* ignore */ }
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ name: this.el.name.value, color: this.color, theme: this.theme, build: this.build })); } catch { /* ignore */ }
   }
 
   buildUI() {
@@ -64,6 +69,27 @@ export class Lobby {
       b.type = 'button'; b.className = 'swatch'; b.style.background = c; b.style.color = c; b.title = c;
       b.onclick = () => { this.color = c; this.refresh(); };
       this.el.colors.appendChild(b);
+    }
+    // Hull themes, each with a small live drawing in the current colour.
+    this.themeThumbs = [];
+    for (const th of SHIP_THEMES) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'theme'; b.title = th.desc; b.dataset.key = th.key;
+      const c = document.createElement('canvas');
+      c.width = 56; c.height = 56;
+      const label = document.createElement('span');
+      label.textContent = th.label;
+      b.append(c, label);
+      b.onclick = () => { this.theme = th.key; this.refresh(); };
+      this.el.themes.appendChild(b);
+      this.themeThumbs.push({ key: th.key, ctx: c.getContext('2d') });
+    }
+    // Bot difficulty (server-wide, like the bot count).
+    for (const sk of BOT_SKILLS) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.textContent = sk.label; b.dataset.key = sk.key;
+      b.onclick = () => this.net.send({ type: 'setBotSkill', skill: sk.key });
+      this.el.botSkills.appendChild(b);
     }
     // Presets
     for (const [name, preset] of Object.entries(PRESETS)) {
@@ -132,6 +158,11 @@ export class Lobby {
       s.stat.innerHTML = `<b>${describeStat(k, stats)}</b>`;
     }
     for (const sw of this.el.colors.children) sw.classList.toggle('active', sw.title === this.color);
+    for (const b of this.el.themes.children) b.classList.toggle('active', b.dataset.key === this.theme);
+    for (const { key, ctx } of this.themeThumbs) {
+      ctx.clearRect(0, 0, 56, 56);
+      drawShip(ctx, { x: 28, y: 28, angle: -Math.PI / 2, radius: 17, color: this.color, theme: key });
+    }
     this.el.launch.disabled = !this.net.connected || cost > this.credits;
     this.persist();
   }
@@ -141,6 +172,7 @@ export class Lobby {
     this.maxBots = cfg.maxBots;
     this.allowBotControl = cfg.allowBotControl;
     this.el.botsMinus.disabled = this.el.botsPlus.disabled = !cfg.allowBotControl;
+    for (const b of this.el.botSkills.children) b.disabled = !cfg.allowBotControl;
     // Clamp a saved build that exceeds this server's credits.
     while (buildCost(this.build) > this.credits) {
       const k = ABILITY_KEYS.find((key) => this.build[key] > 0);
@@ -155,6 +187,8 @@ export class Lobby {
     this.el.botsCount.textContent = info.bots;
     this.el.botsMinus.disabled = !this.allowBotControl || info.bots <= 0;
     this.el.botsPlus.disabled = !this.allowBotControl || info.bots >= this.maxBots;
+    this.botSkill = info.botSkill;
+    for (const b of this.el.botSkills.children) b.classList.toggle('active', b.dataset.key === info.botSkill);
     const m = info.match;
     const mm = Math.floor(m.remaining / 60), ss = String(m.remaining % 60).padStart(2, '0');
     this.el.liveMatch.textContent = m.state === 'playing'
@@ -182,7 +216,7 @@ export class Lobby {
 
   launch() {
     this.showError('');
-    this.onLaunch({ name: this.el.name.value.trim() || 'Pilot', color: this.color, build: { ...this.build } });
+    this.onLaunch({ name: this.el.name.value.trim() || 'Pilot', color: this.color, theme: this.theme, build: { ...this.build } });
   }
 
   show() { this.el.root.hidden = false; this.visible = true; }
@@ -194,7 +228,7 @@ export class Lobby {
       if (this.visible !== false) {
         ctx.clearRect(0, 0, 120, 120);
         const stats = deriveStats(this.build);
-        drawShip(ctx, { x: 60, y: 60, angle: -Math.PI / 2 + Math.sin(t / 900) * 0.25, radius: stats.radius * 1.6, color: this.color, thrust: 1, shieldPct: stats.shield * 100, time: t / 1000 });
+        drawShip(ctx, { x: 60, y: 60, angle: -Math.PI / 2 + Math.sin(t / 900) * 0.25, radius: stats.radius * 1.6, color: this.color, theme: this.theme, thrust: 1, shieldPct: stats.shield * 100, time: t / 1000 });
       }
       requestAnimationFrame(tick);
     };

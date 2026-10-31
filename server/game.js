@@ -2,6 +2,7 @@
 
 import {
   WORLD, deriveStats, validateBuild, POWERUPS, POWERUP_BY_TYPE, CREDITS_DEFAULT, clamp,
+  BOT_SKILL_BY_KEY, DEFAULT_BOT_SKILL, SHIP_THEME_KEYS, BOT_THEME,
 } from '../shared/stats.js';
 import { moveShip } from '../shared/physics.js';
 import { rand, randInt, pick, wrapPos, delta, dist, angleDiff } from './util.js';
@@ -9,7 +10,7 @@ import { thinkBot, createBotBrain, randomBotBuild, BOT_NAMES, botColor } from '.
 
 export const DEFAULTS = {
   matchSeconds: 300,
-  intermissionSeconds: 15,
+  intermissionSeconds: 3,
   respawnSeconds: 3,
   spawnProtectionSeconds: 2.5,
   credits: CREDITS_DEFAULT,
@@ -19,6 +20,7 @@ export const DEFAULTS = {
   itemLifetime: 35,
   asteroidTarget: 14,
   maxBots: 12,
+  botSkill: DEFAULT_BOT_SKILL,
   killPoints: 1,
 };
 
@@ -40,6 +42,7 @@ export class Game {
     this.time = 0;
     this.nextId = 1;
     this.botCounter = 0;
+    this.botSkill = BOT_SKILL_BY_KEY[this.opts.botSkill] ? this.opts.botSkill : DEFAULT_BOT_SKILL;
     this.nextItemAt = this.opts.itemSpawnMin;
     this.nextAsteroidAt = 0;
     this.match = { state: 'playing', remaining: this.opts.matchSeconds, number: 1, results: null, intermission: 0 };
@@ -47,12 +50,13 @@ export class Game {
   }
 
   // ------------------------------------------------------------------ players
-  addPlayer({ id, name, color, build, isBot = false }) {
+  addPlayer({ id, name, color, build, theme, isBot = false }) {
     const v = validateBuild(build, this.opts.credits);
     if (!v.ok) return { ok: false, error: v.error };
     const pid = id ?? `p${this.nextId++}`;
     const player = {
       id: pid, name, color, isBot,
+      theme: isBot ? BOT_THEME : (SHIP_THEME_KEYS.includes(theme) ? theme : SHIP_THEME_KEYS[0]),
       build: v.build, boosts: {}, pickups: [],
       stats: null,
       x: 0, y: 0, vx: 0, vy: 0, angle: 0,
@@ -116,6 +120,19 @@ export class Game {
     return target;
   }
 
+  /** Change bot difficulty; existing bots get a re-budgeted build immediately. */
+  setBotSkill(key) {
+    if (!BOT_SKILL_BY_KEY[key]) return this.botSkill;
+    this.botSkill = key;
+    for (const p of this.players.values()) {
+      if (!p.isBot) continue;
+      p.build = randomBotBuild(this.opts.credits, key);
+      p.stats = deriveStats(p.build, p.boosts);
+      p.hp = Math.min(p.hp, p.stats.maxHp);
+    }
+    return key;
+  }
+
   addBot() {
     const idx = this.botCounter++;
     const name = BOT_NAMES[idx % BOT_NAMES.length] + (idx >= BOT_NAMES.length ? ` ${Math.floor(idx / BOT_NAMES.length) + 1}` : '');
@@ -123,7 +140,7 @@ export class Game {
       id: `bot${idx}`,
       name,
       color: botColor(idx),
-      build: randomBotBuild(this.opts.credits),
+      build: randomBotBuild(this.opts.credits, this.botSkill),
       isBot: true,
     });
   }
@@ -625,7 +642,7 @@ export class Game {
       torps: this.torpedoes.map((t) => [t.id, Math.round(t.x), Math.round(t.y), Math.round(t.angle * 100) / 100, t.owner]),
       items: this.items.map((i) => [i.id, i.type, Math.round(i.x), Math.round(i.y)]),
       rocks: this.asteroids.map((a) => [a.id, Math.round(a.x), Math.round(a.y), a.r, Math.round(a.rot * 100) / 100, a.seed]),
-      players: [...this.players.values()].map((p) => ({ id: p.id, name: p.name, color: p.color, score: p.score, kills: p.kills, deaths: p.deaths, bot: p.isBot ? 1 : 0, alive: p.alive ? 1 : 0 })),
+      players: [...this.players.values()].map((p) => ({ id: p.id, name: p.name, color: p.color, theme: p.theme, score: p.score, kills: p.kills, deaths: p.deaths, bot: p.isBot ? 1 : 0, alive: p.alive ? 1 : 0 })),
       events,
     };
   }

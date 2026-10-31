@@ -196,3 +196,32 @@ test('snapshot exposes input seq/ticks so clients can replay unacknowledged tick
   const p = g.players.get('h');
   assert.ok(Math.abs(local.x - p.x) < 1e-9 && Math.abs(local.angle - p.angle) < 1e-9);
 });
+
+test('bot skill: validated, re-budgets existing bots, and scales their credits', async () => {
+  const { buildCost } = await import('../shared/stats.js');
+  const g = new Game({ asteroidTarget: 0, botSkill: 'ace' });
+  g.setBotCount(4);
+  const bots = () => [...g.players.values()].filter((p) => p.isBot);
+  for (const b of bots()) assert.equal(buildCost(b.build), 100);
+  assert.equal(g.setBotSkill('rookie'), 'rookie');
+  for (const b of bots()) {
+    assert.equal(buildCost(b.build), 60);
+    assert.ok(b.hp <= b.stats.maxHp);
+  }
+  assert.equal(g.setBotSkill('godlike'), 'rookie'); // unknown keys are ignored
+  assert.equal(new Game({ botSkill: 'nope' }).botSkill, 'pilot');
+  run(g, 20); // bots still behave at the new level
+});
+
+test('ship themes: humans pick from the list, bots always fly drones', () => {
+  const g = new Game({ asteroidTarget: 0 });
+  g.addPlayer({ id: 'a', name: 'A', color: '#ffffff', build: emptyBuild(), theme: 'saucer' });
+  g.addPlayer({ id: 'b', name: 'B', color: '#ffffff', build: emptyBuild(), theme: 'drone' });
+  g.addPlayer({ id: 'c', name: 'C', color: '#ffffff', build: emptyBuild(), theme: '<script>' });
+  g.addBot();
+  const themes = Object.fromEntries(g.snapshotFor('a', []).players.map((p) => [p.id, p.theme]));
+  assert.equal(themes.a, 'saucer');
+  assert.equal(themes.b, 'arrowhead'); // drone is reserved for bots
+  assert.equal(themes.c, 'arrowhead');
+  assert.equal(themes.bot0, 'drone');
+});

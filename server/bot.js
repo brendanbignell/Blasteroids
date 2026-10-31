@@ -1,7 +1,7 @@
 // Simple AI pilots. Each bot evaluates its surroundings a few times per second
 // and writes a normal input record, so the simulation treats it like a player.
 
-import { PRESETS, ABILITY_KEYS, MAX_POINTS, CREDITS_DEFAULT, SHIP_COLORS } from '../shared/stats.js';
+import { PRESETS, ABILITY_KEYS, MAX_POINTS, CREDITS_DEFAULT, SHIP_COLORS, BOT_SKILL_BY_KEY, DEFAULT_BOT_SKILL } from '../shared/stats.js';
 import { delta, angleDiff, rand, randInt, pick } from './util.js';
 
 export const BOT_NAMES = [
@@ -9,7 +9,9 @@ export const BOT_NAMES = [
   'Ava', 'Data', 'Cortana', 'Shodan', 'Mother', 'Deep Thought', 'Robby', 'Tachikoma',
 ];
 
-export function randomBotBuild(credits = CREDITS_DEFAULT) {
+/** Random preset-based build, spending `credits` scaled by the skill's budget fraction. */
+export function randomBotBuild(credits = CREDITS_DEFAULT, skillKey = DEFAULT_BOT_SKILL) {
+  credits = Math.floor(credits * (BOT_SKILL_BY_KEY[skillKey] || BOT_SKILL_BY_KEY[DEFAULT_BOT_SKILL]).credits);
   const base = { ...pick(Object.values(PRESETS)) };
   // Add noise then re-fit to the credit budget.
   for (const k of ABILITY_KEYS) {
@@ -33,8 +35,8 @@ export function createBotBrain() {
     targetId: null,
     waypoint: null,
     waypointUntil: 0,
-    aimError: rand(-0.12, 0.12),
-    aggression: rand(0.6, 1.0),
+    aimBias: rand(-1, 1), // each bot has a consistent tendency to aim to one side
+    aimError: 0,
   };
 }
 
@@ -54,7 +56,10 @@ export function thinkBot(bot, game) {
     return;
   }
   if (game.time < brain.nextThink) return;
-  brain.nextThink = game.time + rand(0.08, 0.16);
+  const skill = BOT_SKILL_BY_KEY[game.botSkill] || BOT_SKILL_BY_KEY[DEFAULT_BOT_SKILL];
+  brain.nextThink = game.time + rand(skill.think[0], skill.think[1]);
+  // Re-roll aim error every decision so weaker bots spray rather than miss consistently.
+  brain.aimError = skill.aim * (0.4 * brain.aimBias + rand(-0.6, 0.6));
 
   const st = bot.stats;
 
@@ -65,7 +70,7 @@ export function thinkBot(bot, game) {
     if (p === bot || !p.alive || p.cloakedUntil > game.time || p.invulnUntil > game.time) continue;
     const { dx, dy } = delta(bot, p);
     const d = Math.hypot(dx, dy);
-    if (d > 1100) continue;
+    if (d > skill.sight) continue;
     // Prefer close and weak targets; stick with current target a little.
     let score = d + p.hp * 2;
     if (p.id === brain.targetId) score *= 0.8;
@@ -79,8 +84,8 @@ export function thinkBot(bot, game) {
   if (target) {
     const { dx, dy } = delta(bot, target);
     dist = Math.hypot(dx, dy);
-    // Lead the target for lasers.
-    const t = dist / st.laserSpeed;
+    // Lead the target for lasers (weaker bots lead less, so they shoot behind moving ships).
+    const t = (dist / st.laserSpeed) * skill.lead;
     desired = { dx: dx + target.vx * t - bot.vx * t, dy: dy + target.vy * t - bot.vy * t };
   } else {
     // Go for a power-up if one is near, otherwise wander.
@@ -126,6 +131,9 @@ export function thinkBot(bot, game) {
     const ang = Math.atan2(desired.dy, desired.dx) + (target ? brain.aimError : 0);
     const diff = angleDiff(bot.angle, ang);
     turn = Math.abs(diff) > 0.05 ? Math.sign(diff) : 0;
+    // Plan the turn: re-think when it should be complete rather than overshooting
+    // for the whole reaction interval.
+    if (turn !== 0) brain.nextThink = Math.min(brain.nextThink, game.time + Math.abs(diff) / st.turnRate);
     const speed = Math.hypot(bot.vx, bot.vy);
     if (target) {
       const standoff = Math.min(st.laserRange * 0.6, 260);
@@ -146,10 +154,11 @@ export function thinkBot(bot, game) {
   input.torpedo = false;
   input.cloak = false;
   if (target) {
-    const ang = Math.atan2(desired.dy, desired.dx);
+    // Fire when lined up with where the bot *thinks* it should aim, aim error included.
+    const ang = Math.atan2(desired.dy, desired.dx) + brain.aimError;
     const diff = Math.abs(angleDiff(bot.angle, ang));
-    if (dist < st.laserRange * 0.95 && diff < 0.18) input.fire = Math.random() < brain.aggression;
-    if (dist < st.torpedoRange * 0.9 && dist > 120 && diff < 0.3 && Math.random() < 0.4) input.torpedo = true;
-    if (st.cloakDuration > 0 && bot.hp < st.maxHp * 0.4 && game.time >= bot.cloakReadyAt) input.cloak = true;
+    if (dist < st.laserRange * 0.95 && diff < skill.cone) input.fire = Math.random() < skill.fire;
+    if (dist < st.torpedoRange * 0.9 && dist > 120 && diff < skill.cone * 1.6 && Math.random() < skill.torpedo) input.torpedo = true;
+    if (skill.cloak && st.cloakDuration > 0 && bot.hp < st.maxHp * 0.4 && game.time >= bot.cloakReadyAt) input.cloak = true;
   }
 }

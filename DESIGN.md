@@ -10,10 +10,10 @@ dependencies) that owns the authoritative game state.
 
 Core loop:
 
-1. **Hangar** – pick a call sign and colour, spend credits on eleven ship abilities.
+1. **Hangar** – pick a call sign, colour and hull style, spend credits on eleven ship abilities.
 2. **Launch** – join the arena mid-match; respawn in a quiet spot with brief invulnerability.
 3. **Fight** – score a point per kill, grab power-ups, survive.
-4. **Match end** – results after the fixed match time, 15 s intermission, scores reset, repeat.
+4. **Match end** – results after the fixed match time, 3 s intermission, scores reset, repeat.
 
 ## 2. Ship customisation
 
@@ -45,6 +45,13 @@ Design notes:
   the server's credit budget — so a modified client gains nothing.
 * Players can return to the hangar at any time (`Esc`) to re-spec, at the cost of leaving the
   match and losing their current temporary boosts (score is kept while the match runs).
+
+### Hull styles
+
+Players choose a purely cosmetic hull: Arrowhead, Explorer (saucer and nacelles), X-Fighter,
+Interceptor (ball cockpit, hexagonal panels), Wedge Cruiser, Saucer or Retro Vector. All are
+drawn procedurally in `client/js/shipart.js` within the same collision radius, so the choice
+never affects gameplay. The server validates the choice and reserves the drone hull for bots.
 
 ## 3. Combat
 
@@ -89,15 +96,32 @@ boosts show as icons under the HP bar.
 ## 5. AI bots
 
 Bots are regular players with randomised preset-based builds and a small brain
-(`server/bot.js`) that re-evaluates ~8 times per second:
+(`server/bot.js`) that makes a decision every reaction interval:
 
-* pick the nearest, weakest, visible (non-cloaked, non-protected) enemy within 1100 px;
-* lead the target for laser shots with a per-bot aim error; keep a stand-off distance;
-* use torpedoes at mid range, cloak when low on health;
+* pick the nearest, weakest, visible (non-cloaked, non-protected) enemy within sight range;
+* lead the target for laser shots, with an aim error re-rolled each decision around a per-bot
+  bias; keep a stand-off distance; plan turns so they stop on target instead of overshooting;
+* use torpedoes at mid range, cloak when low on health (higher skills only);
 * steer away from asteroids; otherwise chase power-ups or wander between waypoints.
 
-The server starts with `BOTS` bots (default 3). Players can add or remove bots from the hangar
-(0–`MAX_BOTS`), unless the operator sets `ALLOW_BOT_CONTROL=false`.
+**Skill levels** (`BOT_SKILLS` in `shared/stats.js`) apply server-wide:
+
+| Level | Reaction | Aim error | Leads target | Sight | Build credits |
+| --- | --- | --- | --- | --- | --- |
+| Rookie | 0.35–0.5 s | ±0.4 rad | no | 650 px | 60 % |
+| Pilot (default) | 0.2–0.3 s | ±0.22 rad | half | 850 px | 80 % |
+| Veteran | 0.08–0.16 s | ±0.12 rad | fully | 1100 px | 100 % |
+| Ace | 0.05–0.08 s | ±0.04 rad | fully | 1300 px | 100 % |
+
+Against a weaving pilot who never shoots back, three bots score roughly 1 / 3 / 5.5 / 6 kills
+per two minutes from Rookie to Ace. Changing the level re-budgets existing bots immediately.
+
+The server starts with `BOTS` bots (default 3) at `BOT_SKILL` (default `pilot`). Players can
+change the bot count (0–`MAX_BOTS`) and skill from the hangar, rate limited, unless the
+operator sets `ALLOW_BOT_CONTROL=false`.
+
+Bots are visually distinct: they always fly a reserved drone hull with a red scanning eye,
+their names carry a ⚙ and are italic, and they are diamonds on the minimap.
 
 ## 6. Match flow
 
@@ -160,8 +184,8 @@ The server starts with `BOTS` bots (default 3). Players can add or remove bots f
 
 ### Protocol (JSON over WebSocket)
 
-Client → server: `join {name,color,build}`, `input {input:{thrust,reverse,left,right,fire,torpedo,cloak}, seq}`,
-`leave`, `setBots {count}`, `ping {t}`.
+Client → server: `join {name,color,theme,build}`, `input {input:{thrust,reverse,left,right,fire,torpedo,cloak}, seq}`,
+`leave`, `setBots {count}`, `setBotSkill {skill}`, `ping {t}`.
 
 Server → client: `welcome {id,config}`, `lobby {...standings, match}`, `joined`, `left`,
 `error {message}`, `state {t, match, ships, lasers, torps, items, rocks, players, events}`,

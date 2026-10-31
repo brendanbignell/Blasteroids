@@ -147,3 +147,32 @@ export const SHIP_COLORS = [
 export function clamp(v, lo, hi) {
   return v < lo ? lo : v > hi ? hi : v;
 }
+
+/** Cosmetic hull styles players can choose. Bots always fly the separate 'drone' hull. */
+export const SHIP_THEMES = [
+  { key: 'arrowhead', label: 'Arrowhead', desc: 'The standard-issue neon dart.' },
+  { key: 'explorer', label: 'Explorer', desc: 'Saucer section with twin warp nacelles.' },
+  { key: 'xfighter', label: 'X-Fighter', desc: 'Long-nosed fighter with four split wings.' },
+  { key: 'interceptor', label: 'Interceptor', desc: 'Ball cockpit between two hexagonal solar panels.' },
+  { key: 'wedge', label: 'Wedge Cruiser', desc: 'Dagger-shaped capital ship with a command tower.' },
+  { key: 'saucer', label: 'Saucer', desc: 'Retro flying saucer with a glowing dome.' },
+  { key: 'retro', label: 'Retro Vector', desc: 'Bare-bones vector ship from the arcade era.' },
+];
+export const SHIP_THEME_KEYS = SHIP_THEMES.map((t) => t.key);
+export const BOT_THEME = 'drone';
+
+/**
+ * Bot difficulty. Tuning knobs read by server/bot.js:
+ *  think: seconds between decisions (reaction time), aim: max aim error (rad, re-rolled each
+ *  decision), lead: fraction of target motion led, fire: trigger probability when lined up,
+ *  cone: how lined-up a shot must be (rad), sight: detection range (px), torpedo: chance to
+ *  fire a torpedo when lined up, cloak: uses cloak when hurt, credits: build budget fraction.
+ */
+export const BOT_SKILLS = [
+  { key: 'rookie', label: 'Rookie', think: [0.35, 0.5], aim: 0.4, lead: 0, fire: 0.3, cone: 0.12, sight: 650, torpedo: 0.1, cloak: false, credits: 0.6 },
+  { key: 'pilot', label: 'Pilot', think: [0.2, 0.3], aim: 0.22, lead: 0.5, fire: 0.5, cone: 0.15, sight: 850, torpedo: 0.2, cloak: false, credits: 0.8 },
+  { key: 'veteran', label: 'Veteran', think: [0.08, 0.16], aim: 0.12, lead: 1, fire: 0.8, cone: 0.18, sight: 1100, torpedo: 0.4, cloak: true, credits: 1 },
+  { key: 'ace', label: 'Ace', think: [0.05, 0.08], aim: 0.04, lead: 1, fire: 1, cone: 0.2, sight: 1300, torpedo: 0.5, cloak: true, credits: 1 },
+];
+export const BOT_SKILL_BY_KEY = Object.fromEntries(BOT_SKILLS.map((s) => [s.key, s]));
+export const DEFAULT_BOT_SKILL = 'pilot';

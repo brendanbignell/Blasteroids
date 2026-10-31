@@ -60,6 +60,16 @@ kbd { display: inline-block; padding: 1px 6px; border: 1px solid rgba(255,255,25
 .swatch.active { border-color: #fff; transform: scale(1.15); }
 .preview-field canvas { background: radial-gradient(circle, rgba(79,209,255,0.08), transparent 70%); border-radius: 50%; }
 
+.hulls { margin-bottom: 18px; }
+.themes { display: flex; flex-wrap: wrap; gap: 8px; }
+.theme {
+  display: flex; flex-direction: column; align-items: center; gap: 2px; width: 84px; padding: 6px 4px;
+  background: rgba(255,255,255,0.04); border: 1px solid var(--panel-border); border-radius: 10px;
+  cursor: pointer; color: var(--muted); font-size: 11px;
+}
+.theme:hover { border-color: var(--accent); color: var(--text); }
+.theme.active { border-color: var(--accent); color: var(--text); background: rgba(79,209,255,0.1); box-shadow: 0 0 12px rgba(79,209,255,0.25); }
+
 .build-header { display: flex; justify-content: space-between; align-items: baseline; }
 .build-header h2 { margin: 0; font-size: 16px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); }
 .credits { font-size: 15px; }
@@ -90,6 +100,16 @@ button.ghost:hover, .presets button:hover { border-color: var(--accent); color: 
 .stepper button:hover { border-color: var(--accent); }
 .stepper button:disabled { opacity: 0.4; cursor: default; }
 .stepper span { min-width: 24px; text-align: center; font-size: 18px; font-weight: 700; }
+.bots-field > span:not(:first-child) { margin-top: 6px; }
+.segmented { display: flex; border: 1px solid var(--panel-border); border-radius: 8px; overflow: hidden; width: max-content; }
+.segmented button {
+  background: rgba(255,255,255,0.04); border: none; border-right: 1px solid var(--panel-border);
+  padding: 6px 10px; font-size: 12px; cursor: pointer; color: var(--muted);
+}
+.segmented button:last-child { border-right: none; }
+.segmented button:hover:not(:disabled) { color: var(--text); }
+.segmented button.active { background: rgba(79,209,255,0.18); color: var(--text); }
+.segmented button:disabled { opacity: 0.4; cursor: default; }
 .controls-help { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); }
 .controls-help strong { color: var(--text); letter-spacing: 0.1em; text-transform: uppercase; font-size: 11px; }
 

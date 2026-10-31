@@ -319,7 +319,7 @@ export class Renderer {
       const prevHp = this._prevHp?.get(s.id);
       if (prevHp !== undefined && s.hp < prevHp - 0.5) this.hitFlash.set(s.id, 1);
       drawShip(ctx, {
-        x: sc.x, y: sc.y, angle: s.a, radius: s.r, color: p.color || '#fff', thrust: s.th,
+        x: sc.x, y: sc.y, angle: s.a, radius: s.r, color: p.color || '#fff', theme: p.theme, thrust: s.th,
         alpha: s.ck ? 0.35 : 1, cloaked: !!s.ck, shieldPct: s.sh, invuln: !!s.inv,
         hitFlash: this.hitFlash.get(s.id) || 0, time: this.time,
       });
@@ -327,11 +327,11 @@ export class Renderer {
       if (!s.ck || isSelf) {
         ctx.save();
         ctx.globalAlpha = s.ck ? 0.5 : 0.9;
-        ctx.font = `${isSelf ? 'bold ' : ''}12px system-ui, sans-serif`;
+        ctx.font = `${isSelf ? 'bold ' : p.bot ? 'italic ' : ''}12px system-ui, sans-serif`;
         ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
         ctx.fillStyle = p.color || '#fff';
         ctx.shadowColor = '#000'; ctx.shadowBlur = 4;
-        ctx.fillText(p.name || '', sc.x, sc.y - s.r - 14);
+        ctx.fillText(p.bot ? `⚙ ${p.name || ''}` : (p.name || ''), sc.x, sc.y - s.r - 14);
         const bw = Math.max(34, s.r * 2.4), bh = 4;
         ctx.shadowBlur = 0;
         ctx.fillStyle = 'rgba(0,0,0,0.6)';
@@ -358,9 +358,18 @@ export class Renderer {
     for (const s of view.ships) {
       if (s.dead) continue;
       const isSelf = s.id === this.selfId;
-      mctx.fillStyle = info.get(s.id)?.color || '#fff';
+      const p = info.get(s.id);
+      mctx.fillStyle = p?.color || '#fff';
       mctx.shadowColor = mctx.fillStyle; mctx.shadowBlur = isSelf ? 8 : 4;
-      mctx.beginPath(); mctx.arc(s.x * sx, s.y * sy, isSelf ? 3.5 : 2.5, 0, Math.PI * 2); mctx.fill();
+      mctx.beginPath();
+      if (p?.bot) {
+        // Bots are diamonds, players are dots.
+        const cx = s.x * sx, cy = s.y * sy, d = 3;
+        mctx.moveTo(cx, cy - d); mctx.lineTo(cx + d, cy); mctx.lineTo(cx, cy + d); mctx.lineTo(cx - d, cy); mctx.closePath();
+      } else {
+        mctx.arc(s.x * sx, s.y * sy, isSelf ? 3.5 : 2.5, 0, Math.PI * 2);
+      }
+      mctx.fill();
       mctx.shadowBlur = 0;
     }
     // viewport rectangle

@@ -14,8 +14,8 @@ let myId = null;
 let config = null;
 
 const lobby = new Lobby(net, {
-  onLaunch: ({ name, color, build }) => {
-    net.send({ type: 'join', name, color, build });
+  onLaunch: ({ name, color, theme, build }) => {
+    net.send({ type: 'join', name, color, theme, build });
   },
 });
 

@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 
 import { Game } from './game.js';
-import { ABILITIES, CREDITS_DEFAULT, MAX_POINTS, WORLD, POWERUPS, SHIP_COLORS, clamp } from '../shared/stats.js';
+import { ABILITIES, CREDITS_DEFAULT, MAX_POINTS, WORLD, POWERUPS, SHIP_COLORS, SHIP_THEMES, BOT_SKILLS, BOT_SKILL_BY_KEY, DEFAULT_BOT_SKILL, clamp } from '../shared/stats.js';
 import { sanitizeName, sanitizeColor, pick, createRateLimiter } from './util.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -21,10 +21,11 @@ const CONFIG = {
   tickHz: Number(env('TICK_HZ', 60)),
   snapshotHz: Number(env('SNAPSHOT_HZ', 20)),
   matchSeconds: Number(env('MATCH_SECONDS', 300)),
-  intermissionSeconds: Number(env('INTERMISSION_SECONDS', 15)),
+  intermissionSeconds: Number(env('INTERMISSION_SECONDS', 3)),
   credits: Number(env('CREDITS', CREDITS_DEFAULT)),
   bots: Number(env('BOTS', 3)),
   maxBots: Number(env('MAX_BOTS', 12)),
+  botSkill: env('BOT_SKILL', DEFAULT_BOT_SKILL),
   maxPlayers: Number(env('MAX_PLAYERS', 32)),
   allowBotControl: env('ALLOW_BOT_CONTROL', 'true') !== 'false',
 };
@@ -81,7 +82,9 @@ const game = new Game({
   intermissionSeconds: CONFIG.intermissionSeconds,
   credits: CONFIG.credits,
   maxBots: CONFIG.maxBots,
+  botSkill: CONFIG.botSkill,
 });
+if (!BOT_SKILL_BY_KEY[CONFIG.botSkill]) console.warn(`[config] unknown BOT_SKILL "${CONFIG.botSkill}", using ${game.botSkill}`);
 game.setBotCount(clamp(CONFIG.bots, 0, CONFIG.maxBots));
 
 const server = http.createServer(serveStatic);
@@ -111,6 +114,7 @@ function lobbyInfo() {
     players: game.standings().map((p) => ({ name: p.name, color: p.color, score: p.score, bot: p.isBot })),
     humans: game.humanCount(),
     bots: game.botCount(),
+    botSkill: game.botSkill,
     match: { state: game.match.state, remaining: Math.round(game.match.remaining), number: game.match.number },
   };
 }
@@ -136,6 +140,8 @@ wss.on('connection', (ws, req) => {
       allowBotControl: CONFIG.allowBotControl,
       powerups: POWERUPS,
       colors: SHIP_COLORS,
+      themes: SHIP_THEMES,
+      botSkills: BOT_SKILLS.map((s) => ({ key: s.key, label: s.label })),
     },
   });
   send(ws, lobbyInfo());
@@ -155,7 +161,7 @@ wss.on('connection', (ws, req) => {
         }
         const name = sanitizeName(msg.name, `Pilot ${id.slice(1)}`);
         const color = sanitizeColor(msg.color, pick(SHIP_COLORS));
-        const result = game.addPlayer({ id, name, color, build: msg.build, isBot: false });
+        const result = game.addPlayer({ id, name, color, build: msg.build, theme: msg.theme, isBot: false });
         if (!result.ok) { send(ws, { type: 'error', message: result.error }); return; }
         client.joined = true;
         client.name = name;
@@ -175,6 +181,14 @@ wss.on('connection', (ws, req) => {
         if (!client.botLimit.tryTake() || !botLimitGlobal.tryTake()) { send(ws, lobbyInfo()); return; }
         const n = game.setBotCount(Number(msg.count));
         console.log(`[bots] ${id} set bot count to ${n}`);
+        broadcast(lobbyInfo());
+        break;
+      }
+      case 'setBotSkill': {
+        if (!CONFIG.allowBotControl) { send(ws, { type: 'error', message: 'Bot control is disabled on this server.' }); return; }
+        if (!client.botLimit.tryTake() || !botLimitGlobal.tryTake()) { send(ws, lobbyInfo()); return; }
+        const skill = game.setBotSkill(String(msg.skill));
+        console.log(`[bots] ${id} set bot skill to ${skill}`);
         broadcast(lobbyInfo());
         break;
       }
@@ -240,7 +254,7 @@ setInterval(() => {
 
 server.listen(CONFIG.port, CONFIG.host, () => {
   console.log(`Blasteroids server listening on http://${CONFIG.host}:${CONFIG.port}`);
-  console.log(`  match ${CONFIG.matchSeconds}s, credits ${CONFIG.credits}, bots ${game.botCount()}, tick ${CONFIG.tickHz}Hz, snapshots ${CONFIG.snapshotHz}Hz`);
+  console.log(`  match ${CONFIG.matchSeconds}s, credits ${CONFIG.credits}, bots ${game.botCount()} (${game.botSkill}), tick ${CONFIG.tickHz}Hz, snapshots ${CONFIG.snapshotHz}Hz`);
 });
 
 for (const sig of ['SIGINT', 'SIGTERM']) {
