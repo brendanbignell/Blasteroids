@@ -3,6 +3,7 @@ import { Input } from './input.js';
 import { Lobby } from './lobby.js';
 import { Renderer, INTERP_DELAY } from './render.js';
 import { Sound } from './audio.js';
+import { Music } from './music.js';
 import { Hud } from './hud.js';
 
 const net = new Net();
@@ -10,16 +11,20 @@ const renderer = new Renderer(document.getElementById('game'));
 const hud = new Hud();
 const input = new Input(net);
 const sound = new Sound();
+const music = new Music(sound);
 
 // Sound controls: M toggles mute anywhere outside text fields; the hangar has a volume slider.
 const volumeEl = document.getElementById('volume');
+const musicEl = document.getElementById('music-volume');
 const muteEl = document.getElementById('mute');
 const syncSoundUI = () => {
   volumeEl.value = Math.round(sound.volume * 100);
+  musicEl.value = Math.round(sound.musicVolume * 100);
   muteEl.textContent = sound.muted || sound.volume === 0 ? '🔇' : '🔊';
   muteEl.title = sound.muted ? 'Unmute (M)' : 'Mute (M)';
 };
 volumeEl.oninput = () => { sound.unlock(); sound.setVolume(Number(volumeEl.value) / 100); syncSoundUI(); };
+musicEl.oninput = () => { sound.unlock(); sound.setMusicVolume(Number(musicEl.value) / 100); syncSoundUI(); };
 muteEl.onclick = () => { sound.unlock(); sound.toggleMute(); syncSoundUI(); };
 window.addEventListener('keydown', (e) => {
   if (e.code !== 'KeyM' || e.repeat || (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA'))) return;
@@ -50,6 +55,7 @@ function enterGame() {
 function enterLobby() {
   mode = 'lobby';
   sound.update(0, false, false);
+  music.setIntensity(0);
   input.setEnabled(false);
   hud.hide();
   lobby.show();
@@ -95,7 +101,7 @@ function labelFor(type) {
 net.connect();
 
 // Debug handle (handy in the devtools console and for automated tests).
-window.__blasteroids = { net, renderer, hud, input, lobby, sound, get myId() { return myId; }, get mode() { return mode; } };
+window.__blasteroids = { net, renderer, hud, input, lobby, sound, music, get myId() { return myId; }, get mode() { return mode; } };
 
 let last = performance.now();
 function loop(now) {
@@ -108,6 +114,8 @@ function loop(now) {
     if (view) hud.update(view, renderer, { showScores: input.showScores, rtt: net.rtt, connected: net.connected, muted: sound.muted });
     const thrust = input.state.thrust ? 1 : input.state.reverse ? 2 : 0;
     sound.update(thrust, renderer.lockedOnMe, !!renderer.predictor.state && latest?.match.state === 'playing');
+    // Music: full arrangement during a match, extra drive in the last 30 s, calm on the results screen.
+    music.setIntensity(latest?.match.state !== 'playing' ? 0 : latest.match.remaining <= 30 ? 2 : 1);
   } else {
     // Idle starfield drift behind the lobby.
     renderer.cam.x += dt * 12;

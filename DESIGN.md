@@ -197,6 +197,14 @@ their names carry a ⚙ and are italic, and they are diamonds on the minimap.
   engine for our own thrust and a beeping missile-lock warning. Audio starts on the first key
   press or click (browser autoplay rules); `M` mutes, the hangar has a volume slider, and both
   are remembered in `localStorage`. At most 28 one-shot sounds play at once.
+* **Music** (`client/js/music.js`): a procedural synthwave loop in A minor at 112 BPM, played
+  by a step sequencer that schedules notes ~120 ms ahead on the audio clock. Every 4 bars it
+  picks a new chord progression and arpeggio shape, and a pentatonic lead improvises in
+  alternating 8-bar phrases, so it doesn't repeat exactly. Intensity follows the game: pad and
+  slow arpeggio in the hangar and on the results screen; bass, drums, 16th-note arpeggio with
+  echo and the lead during a match; four-on-the-floor kick, faster hats and a brighter filter
+  in the last 30 s. Layers crossfade over ~1.5 s. Music has its own volume (mixed ~6 dB under
+  the effects by default), `M` mutes everything, and it pauses while the tab is hidden.
 * Reconnects automatically with backoff and drops back to the hangar if the socket closes.
 
 ### Protocol (JSON over WebSocket)
@@ -215,4 +223,4 @@ Server → client: `welcome {id,config}`, `lobby {...standings, match}`, `joined
   larger player counts.
 * Teams, capture points, or king-of-the-hill variants on top of the same simulation.
 * Persistent accounts and leaderboards across matches.
-* Music, and optional sample-based sound packs on top of the synthesised effects.
+* Optional sample-based sound packs on top of the synthesised audio.

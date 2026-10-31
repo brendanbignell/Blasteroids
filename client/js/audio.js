@@ -21,14 +21,20 @@ function wrapDelta(d, size) {
 export class Sound {
   constructor() {
     this.ctx = null;
-    this.volume = 0.7;
-    this.muted = false;
+    this.volume = 0.7; // sound effects
+    this.musicVolume = 0.5;
+    this.muted = false; // mutes everything
+    this.onUnlock = null; // called once the AudioContext exists (music hooks in here)
     this.voices = 0;
     this.engine = null;
     this.lockBeepAt = 0;
     try {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
-      if (saved) { this.volume = Math.max(0, Math.min(1, Number(saved.volume ?? 0.7))); this.muted = !!saved.muted; }
+      if (saved) {
+        this.volume = Math.max(0, Math.min(1, Number(saved.volume ?? 0.7)));
+        this.musicVolume = Math.max(0, Math.min(1, Number(saved.musicVolume ?? 0.5)));
+        this.muted = !!saved.muted;
+      }
     } catch { /* ignore */ }
     // Browsers only allow audio after a user gesture, so start on the first one.
     const unlock = () => this.unlock();
@@ -41,29 +47,40 @@ export class Sound {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return;
       this.ctx = new AC();
-      this.master = this.ctx.createGain();
+      // Effects (master) and music (musicBus) share a compressor and an overall mute gain.
+      this.output = this.ctx.createGain();
       const comp = this.ctx.createDynamicsCompressor();
       comp.threshold.value = -14; comp.ratio.value = 6;
-      this.master.connect(comp).connect(this.ctx.destination);
-      this.applyVolume();
+      comp.connect(this.output).connect(this.ctx.destination);
+      this.master = this.ctx.createGain();
+      this.master.connect(comp);
+      this.musicBus = this.ctx.createGain();
+      this.musicBus.connect(comp);
       // One second of white noise, reused by every noise-based sound.
       const len = this.ctx.sampleRate;
       this.noise = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
       const data = this.noise.getChannelData(0);
       for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+      this.applyVolume();
+      this.onUnlock?.();
     }
     if (this.ctx.state === 'suspended') this.ctx.resume();
   }
 
   persist() {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ volume: this.volume, muted: this.muted })); } catch { /* ignore */ }
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ volume: this.volume, musicVolume: this.musicVolume, muted: this.muted })); } catch { /* ignore */ }
   }
 
   applyVolume() {
-    if (this.master) this.master.gain.setTargetAtTime(this.muted ? 0 : this.volume * 0.8, this.ctx.currentTime, 0.02);
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    this.output.gain.setTargetAtTime(this.muted ? 0 : 1, t, 0.02);
+    this.master.gain.setTargetAtTime(this.volume * 0.8, t, 0.02);
+    this.musicBus.gain.setTargetAtTime(this.musicVolume * 0.2, t, 0.05);
   }
 
   setVolume(v) { this.volume = Math.max(0, Math.min(1, v)); if (this.volume > 0) this.muted = false; this.applyVolume(); this.persist(); }
+  setMusicVolume(v) { this.musicVolume = Math.max(0, Math.min(1, v)); if (this.musicVolume > 0) this.muted = false; this.applyVolume(); this.persist(); }
   toggleMute() { this.muted = !this.muted; this.applyVolume(); this.persist(); return this.muted; }
 
   get ready() { return !!this.ctx && this.ctx.state === 'running' && !this.muted && this.volume > 0; }

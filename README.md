@@ -36,7 +36,7 @@ npm test
 | `X`, `Enter` or `Shift` | Fire torpedo |
 | `C` | Cloak (press again to drop it early) |
 | `Tab` (hold) | Full scoreboard |
-| `M` | Mute / unmute sound |
+| `M` | Mute / unmute sound and music |
 | `Esc` | Back to the hangar to re-customise |
 
 ## Configuration
