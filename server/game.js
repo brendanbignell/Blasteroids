@@ -3,6 +3,7 @@
 import {
   WORLD, deriveStats, validateBuild, POWERUPS, POWERUP_BY_TYPE, CREDITS_DEFAULT, clamp,
 } from '../shared/stats.js';
+import { moveShip } from '../shared/physics.js';
 import { rand, randInt, pick, wrapPos, delta, dist, angleDiff } from './util.js';
 import { thinkBot, createBotBrain, randomBotBuild, BOT_NAMES, botColor } from './bot.js';
 
@@ -62,6 +63,7 @@ export class Game {
       laserReadyAt: 0, torpedoReadyAt: 0,
       lastCollisionAt: 0,
       input: { thrust: false, reverse: false, left: false, right: false, fire: false, torpedo: false, cloak: false },
+      inputSeq: 0, inputTicks: 0, // latest client input sequence and ticks simulated with it
       score: 0, kills: 0, deaths: 0,
       lastHitBy: null, lastHitAt: -Infinity,
       lastDeath: null,
@@ -81,9 +83,13 @@ export class Game {
     this.events.push({ type: 'leave', id, name: p.name });
   }
 
-  setInput(id, input) {
+  setInput(id, input, seq) {
     const p = this.players.get(id);
     if (!p || p.isBot || !input) return;
+    if (Number.isInteger(seq)) {
+      if (seq < p.inputSeq) return; // stale: a newer input is already in effect
+      if (seq > p.inputSeq) { p.inputSeq = seq; p.inputTicks = 0; }
+    }
     for (const k of Object.keys(p.input)) p.input[k] = !!input[k];
   }
 
@@ -257,27 +263,8 @@ export class Game {
     const st = p.stats;
     const inp = p.input;
 
-    // Rotation
-    if (inp.left) p.angle -= st.turnRate * dt;
-    if (inp.right) p.angle += st.turnRate * dt;
-    if (p.angle > Math.PI) p.angle -= Math.PI * 2;
-    else if (p.angle < -Math.PI) p.angle += Math.PI * 2;
-
-    // Thrust
-    if (inp.thrust) {
-      p.vx += Math.cos(p.angle) * st.accel * dt;
-      p.vy += Math.sin(p.angle) * st.accel * dt;
-    } else if (inp.reverse) {
-      p.vx -= Math.cos(p.angle) * st.accel * 0.5 * dt;
-      p.vy -= Math.sin(p.angle) * st.accel * 0.5 * dt;
-    }
-    // Light drag so ships are controllable but still drift.
-    const drag = Math.exp(-0.45 * dt);
-    p.vx *= drag; p.vy *= drag;
-    const speed = Math.hypot(p.vx, p.vy);
-    if (speed > st.maxSpeed) { p.vx *= st.maxSpeed / speed; p.vy *= st.maxSpeed / speed; }
-    p.x += p.vx * dt; p.y += p.vy * dt;
-    wrapPos(p);
+    moveShip(p, inp, st, dt);
+    p.inputTicks++;
 
     // Regen
     if (st.hpRegen > 0 && p.hp < st.maxHp && this.time - p.lastHitAt > 1.5) {
@@ -611,6 +598,10 @@ export class Game {
       };
       if (isSelf) {
         s.self = {
+          // Exact state for client-side prediction / reconciliation.
+          px: p.x, py: p.y, pvx: p.vx, pvy: p.vy, pa: p.angle,
+          seq: p.inputSeq, ticks: p.inputTicks,
+          turnRate: p.stats.turnRate, accel: p.stats.accel, maxSpeed: p.stats.maxSpeed,
           laserCd: Math.max(0, p.laserReadyAt - this.time),
           torpCd: Math.max(0, p.torpedoReadyAt - this.time),
           torpMax: p.stats.torpedoCooldown,

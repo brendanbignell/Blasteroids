@@ -175,3 +175,24 @@ test('rate limiter allows a burst, then refills over time', () => {
   t += 60_000; // refill is capped at capacity
   assert.deepEqual([lim.tryTake(), lim.tryTake(), lim.tryTake(), lim.tryTake()], [true, true, true, false]);
 });
+
+test('snapshot exposes input seq/ticks so clients can replay unacknowledged ticks', async () => {
+  const { moveShip } = await import('../shared/physics.js');
+  const g = new Game({ asteroidTarget: 0 });
+  g.asteroids = [];
+  g.addPlayer({ id: 'h', name: 'H', color: '#ffffff', build: PRESETS.Scout });
+  run(g, 0.1);
+  g.setInput('h', { right: true, thrust: true }, 5);
+  g.setInput('h', { left: true }, 3); // stale seq must be ignored
+  run(g, 0.25);
+  const self = g.snapshotFor('h', []).ships.find((s) => s.id === 'h').self;
+  assert.equal(self.seq, 5);
+  assert.equal(self.ticks, 15);
+  // Replaying the same input from the reported state matches the server exactly.
+  const local = { x: self.px, y: self.py, vx: self.pvx, vy: self.pvy, angle: self.pa };
+  const stats = { turnRate: self.turnRate, accel: self.accel, maxSpeed: self.maxSpeed };
+  for (let i = 0; i < 10; i++) moveShip(local, { right: true, thrust: true }, stats, DT);
+  run(g, 10 * DT);
+  const p = g.players.get('h');
+  assert.ok(Math.abs(local.x - p.x) < 1e-9 && Math.abs(local.angle - p.angle) < 1e-9);
+});

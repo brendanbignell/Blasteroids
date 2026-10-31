@@ -131,6 +131,7 @@ wss.on('connection', (ws, req) => {
       abilities: ABILITIES,
       world: WORLD,
       matchSeconds: CONFIG.matchSeconds,
+      tickHz: CONFIG.tickHz,
       maxBots: CONFIG.maxBots,
       allowBotControl: CONFIG.allowBotControl,
       powerups: POWERUPS,
@@ -163,7 +164,7 @@ wss.on('connection', (ws, req) => {
         break;
       }
       case 'input':
-        if (client.joined) game.setInput(id, msg.input);
+        if (client.joined) game.setInput(id, msg.input, msg.seq);
         break;
       case 'leave':
         if (client.joined) { game.removePlayer(id); client.joined = false; send(ws, { type: 'left' }); }

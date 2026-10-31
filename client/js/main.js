@@ -49,6 +49,7 @@ net.on('close', () => {
 net.on('welcome', (msg) => {
   myId = msg.id;
   config = msg.config;
+  renderer.predictor.setTickHz(config.tickHz);
   lobby.applyConfig(config);
 });
 net.on('lobby', (msg) => lobby.applyLobbyInfo(msg));
@@ -81,6 +82,8 @@ function loop(now) {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   if (mode === 'game') {
+    const latest = renderer.snapshots[renderer.snapshots.length - 1]?.data;
+    renderer.predictor.advance(dt, input.state, input.seq, !latest || latest.match.state !== 'playing');
     const view = renderer.frame(dt);
     if (view) hud.update(view, renderer, { showScores: input.showScores, rtt: net.rtt, connected: net.connected });
   } else {

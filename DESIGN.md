@@ -141,10 +141,18 @@ The server starts with `BOTS` bots (default 3). Players can add or remove bots f
 ### Client
 
 * Vanilla ES modules, no build step; Canvas 2D for the world, DOM for the HUD and hangar.
-* **Interpolation**: the renderer keeps the last 30 snapshots and renders 100 ms in the past,
-  linearly interpolating positions (with wrap-aware deltas) and angles, which hides the 20 Hz
-  update rate. There is no client-side prediction; the design accepts ~RTT/2 + 100 ms input
-  latency, which is fine for LAN/regional play and keeps the client simple and cheat-free.
+* **Interpolation**: other ships, projectiles and rocks are drawn 100 ms behind the server
+  clock, linearly interpolating positions (with wrap-aware deltas) and angles between the last
+  30 snapshots. Snapshots are placed by their server timestamp `t` against a smoothed estimate
+  of the server clock, not by arrival time, so network jitter doesn't make motion stutter.
+* **Prediction**: the local ship responds to input immediately. The client runs the same
+  movement code as the server (`shared/physics.js`) at the server tick rate, tagging every
+  tick with the current input sequence number. Snapshots carry the ship's exact state plus the
+  input `seq` the server is using and how many `ticks` it has applied it for; the client resets
+  to that state and replays only the ticks the server hasn't simulated yet
+  (`client/js/predict.js`). Small corrections (collisions, timing) are blended out over a few
+  frames; large ones (respawn) snap. Only movement is predicted — firing, damage and
+  collisions remain purely server-side, so cheating is no easier than before.
 * **Visuals**: parallax starfield (four tiled layers), nebula gradients, procedurally drawn
   ships with glow, engine flames, shield rings, hit flashes, particle explosions, camera shake,
   seeded asteroid polygons cached per rock id, minimap with viewport rectangle.
@@ -152,7 +160,7 @@ The server starts with `BOTS` bots (default 3). Players can add or remove bots f
 
 ### Protocol (JSON over WebSocket)
 
-Client → server: `join {name,color,build}`, `input {thrust,reverse,left,right,fire,torpedo,cloak}`,
+Client → server: `join {name,color,build}`, `input {input:{thrust,reverse,left,right,fire,torpedo,cloak}, seq}`,
 `leave`, `setBots {count}`, `ping {t}`.
 
 Server → client: `welcome {id,config}`, `lobby {...standings, match}`, `joined`, `left`,
@@ -161,7 +169,7 @@ Server → client: `welcome {id,config}`, `lobby {...standings, match}`, `joined
 
 ## 8. Possible extensions
 
-* Client-side prediction / reconciliation for the local ship if higher-latency play matters.
+* Predicting the local player's own shots so lasers appear instantly at the nose.
 * Binary snapshot encoding and interest management (only send what is near the viewer) for
   larger player counts.
 * Teams, capture points, or king-of-the-hill variants on top of the same simulation.

@@ -4,8 +4,9 @@ import { WORLD, POWERUP_BY_TYPE } from '/shared/stats.js';
 import { drawShip } from './shipart.js';
 import { Starfield } from './starfield.js';
 import { Particles } from './particles.js';
+import { Predictor } from './predict.js';
 
-const INTERP_DELAY = 0.1; // seconds behind the newest snapshot
+const INTERP_DELAY = 0.1; // seconds behind the server clock that other entities are drawn
 
 function wrapDelta(d, size) {
   const half = size / 2;
@@ -26,7 +27,9 @@ export class Renderer {
     this.ctx = canvas.getContext('2d');
     this.starfield = new Starfield();
     this.particles = new Particles();
-    this.snapshots = []; // {recv, data}
+    this.snapshots = []; // {data}, ordered by server time data.t
+    this.clockOffset = null; // estimated serverTime - localTime (s)
+    this.predictor = new Predictor();
     this.cam = { x: WORLD.width / 2, y: WORLD.height / 2 };
     this.selfId = null;
     this.hitFlash = new Map(); // shipId -> intensity
@@ -46,12 +49,18 @@ export class Renderer {
   }
 
   pushSnapshot(data) {
-    this.snapshots.push({ recv: performance.now() / 1000, data });
+    // Track the server clock so interpolation uses server timestamps, not arrival times
+    // (arrival jitter otherwise makes motion visibly stutter).
+    const sample = data.t - performance.now() / 1000;
+    if (this.clockOffset === null || Math.abs(sample - this.clockOffset) > 1) this.clockOffset = sample;
+    else this.clockOffset += (sample - this.clockOffset) * 0.05;
+    this.snapshots.push({ data });
     if (this.snapshots.length > 30) this.snapshots.shift();
+    this.predictor.reconcile(data.ships.find((s) => s.id === this.selfId));
     for (const ev of data.events || []) this.handleEvent(ev);
   }
 
-  reset() { this.snapshots = []; this.particles.list = []; this.hitFlash.clear(); }
+  reset() { this.snapshots = []; this.clockOffset = null; this.predictor.reset(); this.particles.list = []; this.hitFlash.clear(); }
 
   handleEvent(ev) {
     switch (ev.type) {
@@ -74,15 +83,15 @@ export class Renderer {
   interpolate() {
     const snaps = this.snapshots;
     if (snaps.length === 0) return null;
-    const now = performance.now() / 1000 - INTERP_DELAY;
+    const now = performance.now() / 1000 + this.clockOffset - INTERP_DELAY;
     let a = snaps[0], b = snaps[0];
     for (let i = 0; i < snaps.length; i++) {
-      if (snaps[i].recv <= now) a = snaps[i];
-      if (snaps[i].recv >= now) { b = snaps[i]; break; }
+      if (snaps[i].data.t <= now) a = snaps[i];
+      if (snaps[i].data.t >= now) { b = snaps[i]; break; }
       b = snaps[i];
     }
-    const span = b.recv - a.recv;
-    const t = span > 0 ? Math.min(1, Math.max(0, (now - a.recv) / span)) : 1;
+    const span = b.data.t - a.data.t;
+    const t = span > 0 ? Math.min(1, Math.max(0, (now - a.data.t) / span)) : 1;
     const A = a.data, B = b.data;
 
     const ships = [];
@@ -100,6 +109,16 @@ export class Renderer {
       });
     }
     for (const sb of B.ships) if (!A.ships.some((s) => s.id === sb.id)) ships.push(sb);
+
+    // Our own ship is drawn where local prediction says it is now, not 100 ms in the past.
+    const pred = this.predictor.display();
+    const latestSelf = snaps[snaps.length - 1].data.ships.find((s) => s.id === this.selfId);
+    if (pred && latestSelf && !latestSelf.dead) {
+      const inp = this.predictor.input;
+      const own = { ...latestSelf, x: pred.x, y: pred.y, a: pred.angle, vx: pred.vx, vy: pred.vy, th: inp.thrust ? 1 : inp.reverse ? 2 : 0 };
+      const i = ships.findIndex((s) => s.id === this.selfId);
+      if (i >= 0) ships[i] = own; else ships.push(own);
+    }
 
     const lerpList = (la, lb) => {
       const map = new Map(la.map((e) => [e[0], e]));

@@ -18,6 +18,7 @@ export class Input {
     this.showScores = false;
     this.onEscape = null;
     this._lastSent = '';
+    this.seq = 0; // bumped on every input change; the server echoes it back for prediction
     this._heartbeat = null;
 
     window.addEventListener('keydown', (e) => this.handle(e, true));
@@ -57,7 +58,8 @@ export class Input {
     if (!this.enabled) return;
     const encoded = JSON.stringify(this.state);
     if (!force && encoded === this._lastSent) return;
+    if (encoded !== this._lastSent) this.seq++;
     this._lastSent = encoded;
-    this.net.send({ type: 'input', input: this.state });
+    this.net.send({ type: 'input', input: this.state, seq: this.seq });
   }
 }
