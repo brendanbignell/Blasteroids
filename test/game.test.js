@@ -83,11 +83,44 @@ test('cloaked ships are hidden from other players but visible to themselves', ()
   const seenBySelf = g.snapshotFor('g', []).ships.map((s) => s.id);
   assert.ok(!seenByOther.includes('g'));
   assert.ok(seenBySelf.includes('g'));
-  // Firing breaks the cloak
-  g.setInput('g', { cloak: false, fire: true });
-  g.step(DT);
-  assert.ok(ghost.cloakedUntil <= g.time);
+  // Weapons are locked while cloaked: no shots, cloak stays up, no cooldown used.
+  g.setInput('g', { cloak: false, fire: true, torpedo: true });
+  run(g, 1);
+  assert.equal(g.lasers.length + g.torpedoes.length, 0);
+  assert.ok(ghost.cloakedUntil > g.time);
+  assert.ok(!g.snapshotFor('o', []).ships.some((s) => s.id === 'g'));
+  // Once the cloak runs out, held triggers fire straight away.
+  run(g, ghost.cloakedUntil - g.time + 2 * DT);
   assert.ok(g.snapshotFor('o', []).ships.some((s) => s.id === 'g'));
+  assert.ok(g.lasers.length > 0 && g.torpedoes.length > 0);
+});
+
+test('torpedo seeker curves toward a visible enemy ahead but ignores cloaked ones', () => {
+  const g = new Game({ asteroidTarget: 0, maxItems: 0 });
+  g.asteroids = [];
+  const shooter = g.addPlayer({ id: 's', name: 'S', color: '#ffffff', build: emptyBuild() }).player;
+  const target = g.addPlayer({ id: 't', name: 'T', color: '#ffffff', build: { ...emptyBuild(), cloak: 50 } }).player;
+  g.step(DT);
+  const place = () => {
+    g.torpedoes = [];
+    Object.assign(shooter, { x: 1000, y: 1000, vx: 0, vy: 0, angle: 0, torpedoReadyAt: 0, cloakedUntil: 0 });
+    // Target ahead but 30 degrees off the torpedo's heading.
+    Object.assign(target, { x: 1000 + 300 * Math.cos(0.52), y: 1000 + 300 * Math.sin(0.52), vx: 0, vy: 0, invulnUntil: 0 });
+    g.fireTorpedo(shooter);
+    shooter.torpedoReadyAt = Infinity; // no more shots
+  };
+
+  place();
+  run(g, 0.4);
+  assert.equal(g.torpedoes[0].targetId, 't');
+  assert.ok(g.torpedoes[0].angle > 0.2, `torpedo should curve toward target, angle ${g.torpedoes[0].angle}`);
+  assert.equal(g.snapshotFor('t', []).torps[0][5], 't'); // clients learn about the lock
+
+  place();
+  target.cloakedUntil = g.time + 5;
+  run(g, 0.4);
+  assert.equal(g.torpedoes[0].targetId, null);
+  assert.ok(Math.abs(g.torpedoes[0].angle) < 1e-9, 'a cloaked target must not be tracked');
 });
 
 test('picking up an item boosts a stat until death', () => {

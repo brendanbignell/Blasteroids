@@ -21,6 +21,18 @@ export class Particles {
     this.spawn({ x, y, vx: 0, vy: 0, color: '#ffffff', shape: 'flash', size: r * 1.5, decay: 6 });
   }
 
+  /** Torpedo detonation: fireball plus a sharp shockwave that ends at the blast radius. */
+  torpedoBlast(x, y, color, r) {
+    this.spawn({ x, y, vx: 0, vy: 0, color: '#ffffff', shape: 'flash', size: r * 1.1, decay: 5 });
+    this.spawn({ x, y, vx: 0, vy: 0, color: 'rgba(255,170,60,0.18)', shape: 'disc', size: r, decay: 3 });
+    this.spawn({ x, y, vx: 0, vy: 0, color: '#ffe08a', shape: 'ring', size: r * 0.25, grow: r * 0.75, decay: 2.6, width: 4 });
+    this.spawn({ x, y, vx: 0, vy: 0, color, shape: 'ring', size: r * 0.15, grow: r * 0.85, decay: 2.0 });
+    this.burst(x, y, '#fff3c4', { count: 14, speed: r * 2.5, size: 3, life: 0.35 });
+    this.burst(x, y, '#ffb347', { count: 26, speed: r * 3, size: 3.5, life: 0.7 });
+    this.burst(x, y, '#ff6a3d', { count: 18, speed: r * 1.6, size: 4.5, life: 0.9 });
+    this.burst(x, y, color, { count: 14, speed: r * 3.5, size: 2.5, life: 0.8 });
+  }
+
   rockBreak(x, y, r) {
     this.burst(x, y, '#b8c2d0', { count: Math.round(r / 2.5), speed: r * 2, size: 2.5, life: 0.8 });
     this.burst(x, y, '#6f7a8c', { count: Math.round(r / 4), speed: r * 1.2, size: 4, life: 1.0 });
@@ -53,8 +65,11 @@ export class Particles {
       const s = toScreen(p.x, p.y);
       if (!s) continue;
       ctx.globalAlpha = Math.max(0, Math.min(1, p.life));
-      if (p.shape === 'ring') {
-        ctx.strokeStyle = p.color; ctx.lineWidth = 2 + (1 - p.life) * 2;
+      if (p.shape === 'disc') {
+        ctx.fillStyle = p.color;
+        ctx.beginPath(); ctx.arc(s.x, s.y, p.size, 0, Math.PI * 2); ctx.fill();
+      } else if (p.shape === 'ring') {
+        ctx.strokeStyle = p.color; ctx.lineWidth = p.width ? p.width * p.life + 1 : 2 + (1 - p.life) * 2;
         ctx.beginPath(); ctx.arc(s.x, s.y, p.size + (1 - p.life) * p.grow, 0, Math.PI * 2); ctx.stroke();
       } else if (p.shape === 'flash') {
         const g = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, p.size);

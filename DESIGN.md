@@ -55,12 +55,19 @@ never affects gameplay. The server validates the choice and reserves the drone h
 
 ## 3. Combat
 
-* **Lasers** are hit-scan-feel projectiles (760 px/s) with range from the build, 4 shots/s.
-* **Torpedoes** are slower (380 px/s), have a proximity fuse and splash damage with linear
-  falloff; the owner takes half damage from their own blast, so point-blank use is risky.
+* **Lasers** are the precise weapon: fast (900 px/s), thin beam streaks in the shooter's
+  colour, range from the build, 4 shots/s.
+* **Torpedoes** are the area weapon: slow (360 px/s) pulsing plasma orbs with an ember trail,
+  a proximity fuse and splash damage with linear falloff, shown by a shockwave ring the size
+  of the blast. The owner takes half damage from their own blast, so point-blank use is risky.
+  A light **seeker** locks onto the nearest visible enemy within 420 px and ±57° of its
+  heading and curves toward it at up to 1.6 rad/s, so a torpedo fired roughly at someone will
+  chase them but can be out-turned. The locked player sees a red reticle on the torpedo and a
+  flashing MISSILE LOCK warning.
 * **Cloak** makes a ship disappear from everyone else's snapshots entirely (not just
-  transparent on the client, so no "see cloaked ships" hack is possible). Firing breaks the
-  cloak. Bots cannot target cloaked ships.
+  transparent on the client, so no "see cloaked ships" hack is possible). Weapons are locked
+  while cloaked, so cloak is for escaping or repositioning, not ambushing. Bots and torpedo
+  seekers cannot target cloaked ships.
 * **Asteroids** drift through the arena, block shots, split large → medium → small when
   destroyed, and damage ships on collision proportional to impact speed. They make the arena
   feel alive and give cover.

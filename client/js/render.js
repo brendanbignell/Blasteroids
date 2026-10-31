@@ -14,6 +14,10 @@ function wrapDelta(d, size) {
   if (d < -half) return d + size;
   return d;
 }
+function withAlpha(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
 function lerpAngle(a, b, t) {
   let d = b - a;
   while (d > Math.PI) d -= Math.PI * 2;
@@ -65,7 +69,8 @@ export class Renderer {
   handleEvent(ev) {
     switch (ev.type) {
       case 'explosion':
-        this.particles.explosion(ev.x, ev.y, ev.color, ev.r);
+        if (ev.ship) this.particles.explosion(ev.x, ev.y, ev.color, ev.r);
+        else this.particles.torpedoBlast(ev.x, ev.y, ev.color, ev.r);
         if (ev.ship || this.distToCam(ev) < 500) this.shake = Math.max(this.shake, ev.ship ? 10 : 5);
         break;
       case 'rockBreak': this.particles.rockBreak(ev.x, ev.y, ev.r); break;
@@ -278,33 +283,63 @@ export class Renderer {
   drawProjectiles(ctx, view) {
     const colorOf = new Map(view.players.map((p) => [p.id, p.color]));
     ctx.lineCap = 'round';
+    // Lasers: long, thin, fast beam streaks in the shooter's colour.
     for (const [, x, y, a, owner] of view.lasers) {
       const s = this.toScreen(x, y);
       if (!s) continue;
       const color = colorOf.get(owner) || '#fff';
       ctx.save();
       ctx.translate(s.x, s.y); ctx.rotate(a);
-      ctx.shadowColor = color; ctx.shadowBlur = 12;
-      ctx.strokeStyle = color; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.moveTo(-14, 0); ctx.lineTo(6, 0); ctx.stroke();
-      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.2;
-      ctx.beginPath(); ctx.moveTo(-8, 0); ctx.lineTo(6, 0); ctx.stroke();
+      ctx.shadowColor = color; ctx.shadowBlur = 10;
+      ctx.strokeStyle = color; ctx.lineWidth = 2.2;
+      ctx.beginPath(); ctx.moveTo(-30, 0); ctx.lineTo(8, 0); ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(-18, 0); ctx.lineTo(8, 0); ctx.stroke();
       ctx.restore();
     }
-    for (const [id, x, y, a, owner] of view.torps) {
+    // Torpedoes: slow, pulsing plasma orbs with a spinning corona and an ember/smoke trail.
+    this.lockedOnMe = false;
+    for (const [id, x, y, a, owner, target] of view.torps) {
+      const lockedOnMe = target != null && target === this.selfId;
+      if (lockedOnMe) this.lockedOnMe = true;
       const s = this.toScreen(x, y);
       if (!s) continue;
       const color = colorOf.get(owner) || '#fff';
-      // trail particles
-      if (Math.random() < 0.6) this.particles.spawn({ x: x - Math.cos(a) * 8, y: y - Math.sin(a) * 8, vx: -Math.cos(a) * 40 + (Math.random() - 0.5) * 30, vy: -Math.sin(a) * 40 + (Math.random() - 0.5) * 30, color: Math.random() < 0.5 ? '#ffb347' : color, size: 2.5, decay: 2.5 });
+      const back = { x: x - Math.cos(a) * 10, y: y - Math.sin(a) * 10 };
+      if (Math.random() < 0.8) this.particles.spawn({ ...back, vx: -Math.cos(a) * 50 + (Math.random() - 0.5) * 40, vy: -Math.sin(a) * 50 + (Math.random() - 0.5) * 40, color: Math.random() < 0.6 ? '#ffb347' : '#ff6a3d', size: 2.5, decay: 2.8 });
+      if (Math.random() < 0.35) this.particles.spawn({ ...back, vx: (Math.random() - 0.5) * 20, vy: (Math.random() - 0.5) * 20, color: 'rgba(160,170,190,0.35)', size: 5, decay: 1.2, drag: 0.95 });
+      const pulse = 0.85 + 0.15 * Math.sin(this.time * 18 + id);
       ctx.save();
-      ctx.translate(s.x, s.y); ctx.rotate(a);
-      ctx.shadowColor = color; ctx.shadowBlur = 20;
-      ctx.fillStyle = color;
-      ctx.beginPath(); ctx.ellipse(0, 0, 9, 4.5, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#fff';
-      ctx.beginPath(); ctx.ellipse(2, 0, 4, 2, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.translate(s.x, s.y);
+      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 23 * pulse);
+      g.addColorStop(0, 'rgba(255,255,255,1)');
+      g.addColorStop(0.25, 'rgba(255,224,138,0.95)');
+      g.addColorStop(0.55, withAlpha(color, 0.55));
+      g.addColorStop(1, withAlpha(color, 0));
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(0, 0, 23 * pulse, 0, Math.PI * 2); ctx.fill();
+      ctx.rotate(this.time * 7 + id);
+      ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.shadowColor = color; ctx.shadowBlur = 8;
+      ctx.beginPath();
+      for (let i = 0; i < 4; i++) {
+        const sa = (i / 4) * Math.PI * 2;
+        ctx.moveTo(Math.cos(sa) * 6, Math.sin(sa) * 6); ctx.lineTo(Math.cos(sa) * 16 * pulse, Math.sin(sa) * 16 * pulse);
+      }
+      ctx.stroke();
       ctx.restore();
+      // A torpedo locked onto us gets a blinking red reticle.
+      if (lockedOnMe && Math.floor(this.time * 6) % 2 === 0) {
+        ctx.save();
+        ctx.strokeStyle = '#ff3b3b'; ctx.lineWidth = 2; ctx.shadowColor = '#ff3b3b'; ctx.shadowBlur = 8;
+        const R = 26;
+        ctx.beginPath();
+        for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+          ctx.moveTo(s.x + sx * R, s.y + sy * (R - 8)); ctx.lineTo(s.x + sx * R, s.y + sy * R); ctx.lineTo(s.x + sx * (R - 8), s.y + sy * R);
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
     }
   }
 

@@ -80,12 +80,15 @@ export function deriveStats(build, boosts = {}) {
     laserRange: 260 + p('laserRange') * 8,
     laserDamage: 8 + p('laserDamage') * 0.5,
     laserCooldown: 0.25 * Math.pow(0.75, rapid),
-    laserSpeed: 760,
+    laserSpeed: 900, // fast and straight: the precise weapon
     torpedoRange: 320 + p('torpedoRange') * 10,
     torpedoDamage: 25 + p('torpedoDamage') * 1.5,
     torpedoSplash: 70,
     torpedoCooldown: 2.5,
-    torpedoSpeed: 380,
+    torpedoSpeed: 360, // slow but guided: the area weapon
+    torpedoSeekRange: 420, // px: seeker locks onto enemies within this distance...
+    torpedoSeekCone: 1.0, // rad: ...and within this angle either side of its heading
+    torpedoSeekTurn: 1.6, // rad/s: how hard it can curve toward the target
     cloakDuration: p('cloak') * 0.2,
     cloakCooldown: 12,
     maxHp: 100 + p('maxHp') * 3,

@@ -20,6 +20,7 @@ export class Hud {
       killfeed: document.getElementById('killfeed'),
       minimap: document.getElementById('minimap'),
       center: document.getElementById('center-msg'),
+      lock: document.getElementById('lock-warning'),
       results: document.getElementById('results'),
       net: document.getElementById('net-status'),
     };
@@ -31,7 +32,7 @@ export class Hud {
   }
 
   show() { this.el.root.hidden = false; }
-  hide() { this.el.root.hidden = true; this.el.results.hidden = true; this.el.center.hidden = true; this.feed = []; this.el.killfeed.innerHTML = ''; }
+  hide() { this.el.root.hidden = true; this.el.results.hidden = true; this.el.center.hidden = true; this.el.lock.hidden = true; this.feed = []; this.el.killfeed.innerHTML = ''; }
 
   addKill(ev) {
     const killer = ev.killer ? `<span style="color:${ev.killer.color}">${esc(ev.killer.name)}</span>` : null;
@@ -77,8 +78,9 @@ export class Hud {
       this.el.hpFill.className = 'fill' + (frac < 0.25 ? ' low' : frac < 0.5 ? ' mid' : '');
       this.el.hpText.textContent = `${Math.round(me.hp)} / ${me.mhp}${me.self?.regen ? `  (+${me.self.regen.toFixed(1)}/s)` : ''}`;
       const s = me.self || {};
-      setMeter(this.el.laser, 1, false, false);
-      setMeter(this.el.torp, 1 - (s.torpCd || 0) / (s.torpMax || 1), false, false);
+      const cloaked = s.cloakLeft > 0; // weapons are locked while cloaked
+      setMeter(this.el.laser, 1, false, cloaked);
+      setMeter(this.el.torp, 1 - (s.torpCd || 0) / (s.torpMax || 1), false, cloaked);
       if (!s.cloakDur) setMeter(this.el.cloak, 0, false, true);
       else if (s.cloakLeft > 0) setMeter(this.el.cloak, s.cloakLeft / s.cloakDur, true, false);
       else setMeter(this.el.cloak, 1 - (s.cloakCd || 0) / (s.cloakMax || 1), false, false);
@@ -126,6 +128,7 @@ export class Hud {
     }
 
     renderer.drawMinimap(this.mctx, view, this.el.minimap.width, this.el.minimap.height);
+    this.el.lock.hidden = !renderer.lockedOnMe;
 
     this.el.net.textContent = connected ? `${Math.round(rtt)} ms` : 'reconnecting…';
     this.el.net.classList.toggle('bad', !connected || rtt > 250);

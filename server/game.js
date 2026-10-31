@@ -295,12 +295,13 @@ export class Game {
       this.events.push({ type: 'cloak', id: p.id, on: true });
     }
 
-    // Weapons
-    if (inp.fire && this.time >= p.laserReadyAt) {
+    // Weapons are locked while cloaked (no shot, no cooldown used).
+    const cloaked = p.cloakedUntil > this.time;
+    if (inp.fire && !cloaked && this.time >= p.laserReadyAt) {
       p.laserReadyAt = this.time + st.laserCooldown;
       this.fireLaser(p);
     }
-    if (inp.torpedo && this.time >= p.torpedoReadyAt) {
+    if (inp.torpedo && !cloaked && this.time >= p.torpedoReadyAt) {
       p.torpedoReadyAt = this.time + st.torpedoCooldown;
       this.fireTorpedo(p);
     }
@@ -314,7 +315,6 @@ export class Game {
   }
 
   fireLaser(p) {
-    this.decloak(p);
     const st = p.stats;
     const nose = st.radius + 4;
     this.lasers.push({
@@ -330,7 +330,6 @@ export class Game {
   }
 
   fireTorpedo(p) {
-    this.decloak(p);
     const st = p.stats;
     const nose = st.radius + 6;
     this.torpedoes.push({
@@ -343,11 +342,45 @@ export class Game {
       damage: st.torpedoDamage,
       splash: st.torpedoSplash,
       armedAt: this.time + 0.15,
+      seekRange: st.torpedoSeekRange, seekCone: st.torpedoSeekCone, seekTurn: st.torpedoSeekTurn,
+      targetId: null,
     });
     this.events.push({ type: 'torpedo', id: p.id });
   }
 
+  /** Torpedo seeker: lock onto the nearest visible enemy ahead and curve toward it. */
+  steerTorpedo(t, dt) {
+    if (this.time < t.armedAt) return;
+    const heading = Math.atan2(t.vy, t.vx);
+    let target = t.targetId ? this.players.get(t.targetId) : null;
+    const valid = (p) => p && p.alive && p.id !== t.owner && p.cloakedUntil <= this.time;
+    const inCone = (p) => {
+      const { dx, dy } = delta(t, p);
+      const d = Math.hypot(dx, dy);
+      return d < t.seekRange && Math.abs(angleDiff(heading, Math.atan2(dy, dx))) < t.seekCone ? d : -1;
+    };
+    // Keep the current lock while it's valid (a slightly wider cone so it doesn't flicker).
+    if (!valid(target) || inCone(target) < 0) {
+      target = null;
+      let best = Infinity;
+      for (const p of this.players.values()) {
+        if (!valid(p)) continue;
+        const d = inCone(p);
+        if (d >= 0 && d < best) { best = d; target = p; }
+      }
+    }
+    t.targetId = target ? target.id : null;
+    if (!target) return;
+    const { dx, dy } = delta(t, target);
+    const turn = clamp(angleDiff(heading, Math.atan2(dy, dx)), -t.seekTurn * dt, t.seekTurn * dt);
+    const speed = Math.hypot(t.vx, t.vy);
+    const a = heading + turn;
+    t.vx = Math.cos(a) * speed; t.vy = Math.sin(a) * speed;
+    t.angle = a;
+  }
+
   moveProjectiles(dt) {
+    for (const t of this.torpedoes) this.steerTorpedo(t, dt);
     for (const list of [this.lasers, this.torpedoes]) {
       for (const pr of list) {
         pr.x += pr.vx * dt; pr.y += pr.vy * dt; pr.ttl -= dt;
@@ -639,7 +672,7 @@ export class Game {
       match: { state: this.match.state, remaining: Math.max(0, this.match.remaining), number: this.match.number, intermission: Math.max(0, this.match.intermission), results: this.match.state === 'ended' ? this.match.results : undefined },
       ships,
       lasers: this.lasers.map((l) => [l.id, Math.round(l.x), Math.round(l.y), Math.round(l.angle * 100) / 100, l.owner]),
-      torps: this.torpedoes.map((t) => [t.id, Math.round(t.x), Math.round(t.y), Math.round(t.angle * 100) / 100, t.owner]),
+      torps: this.torpedoes.map((t) => [t.id, Math.round(t.x), Math.round(t.y), Math.round(t.angle * 100) / 100, t.owner, t.targetId]),
       items: this.items.map((i) => [i.id, i.type, Math.round(i.x), Math.round(i.y)]),
       rocks: this.asteroids.map((a) => [a.id, Math.round(a.x), Math.round(a.y), a.r, Math.round(a.rot * 100) / 100, a.seed]),
       players: [...this.players.values()].map((p) => ({ id: p.id, name: p.name, color: p.color, theme: p.theme, score: p.score, kills: p.kills, deaths: p.deaths, bot: p.isBot ? 1 : 0, alive: p.alive ? 1 : 0 })),
