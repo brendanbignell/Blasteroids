@@ -58,7 +58,7 @@ export class Hud {
     while (this.feed.length > 6) this.feed.shift().el.remove();
   }
 
-  update(view, renderer, { showScores, rtt, connected }) {
+  update(view, renderer, { showScores, rtt, connected, muted }) {
     const now = performance.now();
     this.feed = this.feed.filter((f) => { if (f.until < now) { f.el.remove(); return false; } return true; });
 
@@ -130,7 +130,7 @@ export class Hud {
     renderer.drawMinimap(this.mctx, view, this.el.minimap.width, this.el.minimap.height);
     this.el.lock.hidden = !renderer.lockedOnMe;
 
-    this.el.net.textContent = connected ? `${Math.round(rtt)} ms` : 'reconnecting…';
+    this.el.net.textContent = (connected ? `${Math.round(rtt)} ms` : 'reconnecting…') + (muted ? ' · sound off (M)' : '');
     this.el.net.classList.toggle('bad', !connected || rtt > 250);
   }
 

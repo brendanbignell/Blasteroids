@@ -6,7 +6,7 @@ import { Starfield } from './starfield.js';
 import { Particles } from './particles.js';
 import { Predictor } from './predict.js';
 
-const INTERP_DELAY = 0.1; // seconds behind the server clock that other entities are drawn
+export const INTERP_DELAY = 0.1; // seconds behind the server clock that other entities are drawn
 
 function wrapDelta(d, size) {
   const half = size / 2;
@@ -34,6 +34,7 @@ export class Renderer {
     this.snapshots = []; // {data}, ordered by server time data.t
     this.clockOffset = null; // estimated serverTime - localTime (s)
     this.predictor = new Predictor();
+    this.lastPos = new Map(); // ship id -> last seen {x, y} (for positioning sounds)
     this.cam = { x: WORLD.width / 2, y: WORLD.height / 2 };
     this.selfId = null;
     this.hitFlash = new Map(); // shipId -> intensity
@@ -59,12 +60,13 @@ export class Renderer {
     if (this.clockOffset === null || Math.abs(sample - this.clockOffset) > 1) this.clockOffset = sample;
     else this.clockOffset += (sample - this.clockOffset) * 0.05;
     this.snapshots.push({ data });
+    for (const s of data.ships) if (!s.dead) this.lastPos.set(s.id, { x: s.x, y: s.y });
     if (this.snapshots.length > 30) this.snapshots.shift();
     this.predictor.reconcile(data.ships.find((s) => s.id === this.selfId));
     for (const ev of data.events || []) this.handleEvent(ev);
   }
 
-  reset() { this.snapshots = []; this.clockOffset = null; this.predictor.reset(); this.particles.list = []; this.hitFlash.clear(); }
+  reset() { this.snapshots = []; this.lastPos.clear(); this.clockOffset = null; this.predictor.reset(); this.particles.list = []; this.hitFlash.clear(); }
 
   handleEvent(ev) {
     switch (ev.type) {

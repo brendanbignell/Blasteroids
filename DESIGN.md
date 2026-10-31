@@ -188,6 +188,15 @@ their names carry a ⚙ and are italic, and they are diamonds on the minimap.
 * **Visuals**: parallax starfield (four tiled layers), nebula gradients, procedurally drawn
   ships with glow, engine flames, shield rings, hit flashes, particle explosions, camera shake,
   seeded asteroid polygons cached per rock id, minimap with viewport rectangle.
+* **Sound** (`client/js/audio.js`): every effect is synthesised live with the Web Audio API
+  (oscillators and filtered noise, no audio files). World sounds fade with distance from the
+  camera (silent beyond ~1300 px) and pan left/right; other players' sounds are scheduled
+  100 ms late to match the interpolated visuals, while our own play immediately. Effects cover
+  lasers, torpedo launch and blast, ship explosions, hits, rock breaks, fizzles, power-up
+  spawns and pickups, spawning, cloaking, kill confirmation, death, match start/end, a looping
+  engine for our own thrust and a beeping missile-lock warning. Audio starts on the first key
+  press or click (browser autoplay rules); `M` mutes, the hangar has a volume slider, and both
+  are remembered in `localStorage`. At most 28 one-shot sounds play at once.
 * Reconnects automatically with backoff and drops back to the hangar if the socket closes.
 
 ### Protocol (JSON over WebSocket)
@@ -206,4 +215,4 @@ Server → client: `welcome {id,config}`, `lobby {...standings, match}`, `joined
   larger player counts.
 * Teams, capture points, or king-of-the-hill variants on top of the same simulation.
 * Persistent accounts and leaderboards across matches.
-* Sound effects and music (all the event hooks already exist on the client).
+* Music, and optional sample-based sound packs on top of the synthesised effects.

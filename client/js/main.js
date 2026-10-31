@@ -1,13 +1,31 @@
 import { Net } from './net.js';
 import { Input } from './input.js';
 import { Lobby } from './lobby.js';
-import { Renderer } from './render.js';
+import { Renderer, INTERP_DELAY } from './render.js';
+import { Sound } from './audio.js';
 import { Hud } from './hud.js';
 
 const net = new Net();
 const renderer = new Renderer(document.getElementById('game'));
 const hud = new Hud();
 const input = new Input(net);
+const sound = new Sound();
+
+// Sound controls: M toggles mute anywhere outside text fields; the hangar has a volume slider.
+const volumeEl = document.getElementById('volume');
+const muteEl = document.getElementById('mute');
+const syncSoundUI = () => {
+  volumeEl.value = Math.round(sound.volume * 100);
+  muteEl.textContent = sound.muted || sound.volume === 0 ? '🔇' : '🔊';
+  muteEl.title = sound.muted ? 'Unmute (M)' : 'Mute (M)';
+};
+volumeEl.oninput = () => { sound.unlock(); sound.setVolume(Number(volumeEl.value) / 100); syncSoundUI(); };
+muteEl.onclick = () => { sound.unlock(); sound.toggleMute(); syncSoundUI(); };
+window.addEventListener('keydown', (e) => {
+  if (e.code !== 'KeyM' || e.repeat || (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA'))) return;
+  sound.toggleMute(); syncSoundUI();
+});
+syncSoundUI();
 
 let mode = 'lobby'; // 'lobby' | 'game'
 let myId = null;
@@ -31,6 +49,7 @@ function enterGame() {
 
 function enterLobby() {
   mode = 'lobby';
+  sound.update(0, false, false);
   input.setEnabled(false);
   hud.hide();
   lobby.show();
@@ -59,6 +78,7 @@ net.on('error', (msg) => lobby.showError(msg.message));
 net.on('state', (msg) => {
   if (mode !== 'game') return;
   renderer.pushSnapshot(msg);
+  sound.handleEvents(msg.events || [], { selfId: myId, cam: renderer.cam, screenW: renderer.w, ships: msg.ships, lastPos: renderer.lastPos, delay: INTERP_DELAY });
   for (const ev of msg.events || []) {
     if (ev.type === 'kill') hud.addKill(ev);
     else if (ev.type === 'pickup' && ev.id === myId) hud.addNotice(`Picked up ${labelFor(ev.itemType)}`, ev.color);
@@ -75,7 +95,7 @@ function labelFor(type) {
 net.connect();
 
 // Debug handle (handy in the devtools console and for automated tests).
-window.__blasteroids = { net, renderer, hud, input, lobby, get myId() { return myId; }, get mode() { return mode; } };
+window.__blasteroids = { net, renderer, hud, input, lobby, sound, get myId() { return myId; }, get mode() { return mode; } };
 
 let last = performance.now();
 function loop(now) {
@@ -85,7 +105,9 @@ function loop(now) {
     const latest = renderer.snapshots[renderer.snapshots.length - 1]?.data;
     renderer.predictor.advance(dt, input.state, input.seq, !latest || latest.match.state !== 'playing');
     const view = renderer.frame(dt);
-    if (view) hud.update(view, renderer, { showScores: input.showScores, rtt: net.rtt, connected: net.connected });
+    if (view) hud.update(view, renderer, { showScores: input.showScores, rtt: net.rtt, connected: net.connected, muted: sound.muted });
+    const thrust = input.state.thrust ? 1 : input.state.reverse ? 2 : 0;
+    sound.update(thrust, renderer.lockedOnMe, !!renderer.predictor.state && latest?.match.state === 'playing');
   } else {
     // Idle starfield drift behind the lobby.
     renderer.cam.x += dt * 12;
