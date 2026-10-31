@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Game } from '../server/game.js';
+import { createRateLimiter } from '../server/util.js';
 import { emptyBuild, PRESETS, WORLD } from '../shared/stats.js';
 
 const DT = 1 / 60;
@@ -161,4 +162,16 @@ test('long simulation with many bots stays healthy', () => {
   assert.ok(g.match.number >= 3);
   const snap = JSON.stringify(g.snapshotFor('bot0', []));
   assert.ok(snap.length < 20000, `snapshot too large: ${snap.length}`);
+});
+
+test('rate limiter allows a burst, then refills over time', () => {
+  let t = 0;
+  const lim = createRateLimiter({ capacity: 3, refillPerSec: 2, now: () => t });
+  assert.deepEqual([lim.tryTake(), lim.tryTake(), lim.tryTake(), lim.tryTake()], [true, true, true, false]);
+  t += 400; // 0.8 tokens
+  assert.equal(lim.tryTake(), false);
+  t += 100; // 1.0 token
+  assert.equal(lim.tryTake(), true);
+  t += 60_000; // refill is capped at capacity
+  assert.deepEqual([lim.tryTake(), lim.tryTake(), lim.tryTake(), lim.tryTake()], [true, true, true, false]);
 });

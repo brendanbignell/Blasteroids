@@ -9,7 +9,7 @@ import { WebSocketServer } from 'ws';
 
 import { Game } from './game.js';
 import { ABILITIES, CREDITS_DEFAULT, MAX_POINTS, WORLD, POWERUPS, SHIP_COLORS, clamp } from '../shared/stats.js';
-import { sanitizeName, sanitizeColor, pick } from './util.js';
+import { sanitizeName, sanitizeColor, pick, createRateLimiter } from './util.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -91,6 +91,11 @@ const wss = new WebSocketServer({ server, maxPayload: 16 * 1024 });
 const clients = new Map();
 let nextClientId = 1;
 
+// Bot-count changes are rate limited per connection (allows a few quick clicks) and
+// server-wide (so opening many sockets doesn't get around the per-connection limit).
+const BOT_LIMIT_PER_CLIENT = { capacity: 4, refillPerSec: 2 };
+const botLimitGlobal = createRateLimiter({ capacity: 10, refillPerSec: 2 });
+
 function send(ws, msg) {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
 }
@@ -112,7 +117,7 @@ function lobbyInfo() {
 
 wss.on('connection', (ws, req) => {
   const id = `h${nextClientId++}`;
-  const client = { id, joined: false, alive: true, name: null };
+  const client = { id, joined: false, alive: true, name: null, botLimit: createRateLimiter(BOT_LIMIT_PER_CLIENT) };
   clients.set(ws, client);
   const addr = req.socket.remoteAddress;
   console.log(`[conn] ${id} from ${addr}`);
@@ -165,6 +170,8 @@ wss.on('connection', (ws, req) => {
         break;
       case 'setBots': {
         if (!CONFIG.allowBotControl) { send(ws, { type: 'error', message: 'Bot control is disabled on this server.' }); return; }
+        // Over the limit: drop the request and resync this client's displayed count.
+        if (!client.botLimit.tryTake() || !botLimitGlobal.tryTake()) { send(ws, lobbyInfo()); return; }
         const n = game.setBotCount(Number(msg.count));
         console.log(`[bots] ${id} set bot count to ${n}`);
         broadcast(lobbyInfo());

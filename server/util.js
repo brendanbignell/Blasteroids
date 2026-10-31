@@ -48,3 +48,22 @@ export function sanitizeColor(raw, fallback) {
   if (typeof raw === 'string' && /^#[0-9a-fA-F]{6}$/.test(raw)) return raw.toLowerCase();
   return fallback;
 }
+
+/**
+ * Token-bucket rate limiter: allows bursts of up to `capacity` actions, refilling at
+ * `refillPerSec`. `now` (ms) is injectable for tests.
+ */
+export function createRateLimiter({ capacity, refillPerSec, now = () => Date.now() }) {
+  let tokens = capacity;
+  let last = now();
+  return {
+    tryTake() {
+      const t = now();
+      tokens = Math.min(capacity, tokens + ((t - last) / 1000) * refillPerSec);
+      last = t;
+      if (tokens < 1) return false;
+      tokens -= 1;
+      return true;
+    },
+  };
+}
