@@ -7,6 +7,12 @@ and power-ups that drop around the arena give temporary boosts until you die.
 
 See [DESIGN.md](DESIGN.md) for the full game and technical design.
 
+![Combat in the arena: an incoming torpedo locked onto the player, bot drones, asteroids and power-ups](docs/screenshots/gameplay.webp)
+
+| Hangar | Hull styles |
+| --- | --- |
+| ![The hangar: call sign, colour, hull style and ship configuration](docs/screenshots/hangar.webp) | ![All seven player hull styles plus the bot drone](docs/screenshots/hulls.webp) |
+
 ## Quick start
 
 Requirements: Node.js 18 or newer (tested on 22) on Linux, macOS or Windows.
