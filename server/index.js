@@ -47,8 +47,14 @@ const STATIC_DIRS = {
 };
 
 function serveStatic(req, res) {
-  const url = new URL(req.url, 'http://localhost');
-  let pathname = decodeURIComponent(url.pathname);
+  let pathname;
+  try {
+    pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
+  } catch {
+    res.writeHead(400, { 'Content-Type': 'text/plain' });
+    res.end('Bad request');
+    return;
+  }
   if (pathname === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: true, players: game.humanCount(), bots: game.botCount(), match: game.match.state, remaining: Math.round(game.match.remaining) }));
@@ -60,7 +66,7 @@ function serveStatic(req, res) {
     if (pathname.startsWith(prefix)) { base = dir; rel = pathname.slice(prefix.length); break; }
   }
   const file = path.normalize(path.join(base, rel));
-  if (!file.startsWith(base)) { res.writeHead(403); res.end('Forbidden'); return; }
+  if (file !== base && !file.startsWith(base + path.sep)) { res.writeHead(403); res.end('Forbidden'); return; }
   fs.readFile(file, (err, data) => {
     if (err) { res.writeHead(404, { 'Content-Type': 'text/plain' }); res.end('Not found'); return; }
     const ext = path.extname(file);
